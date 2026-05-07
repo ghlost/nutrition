@@ -1,4 +1,5 @@
 # Nutrition
+App to prototype out building agents. Specifically to record nutrition and recipes by scanning screenshots or labels using Anthropic API.
 
 ## Process
 start the backend `uvicorn main:app --reload`
