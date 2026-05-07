@@ -1,0 +1,131 @@
+const BASE = '/api'
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, options)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
+    throw new Error(err.detail || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+export interface FoodItem {
+  id: string
+  name: string
+  brand: string | null
+  serving_size: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  fiber_g: number | null
+  sugar_g: number | null
+  sodium_mg: number | null
+  saturated_fat_g: number | null
+  trans_fat_g: number | null
+  cholesterol_mg: number | null
+  source: string
+  created_at: string
+}
+
+export interface RecipeIngredient {
+  id: string
+  recipe_id: string
+  quantity: number
+  unit: string | null
+  ingredient: string
+  notes: string | null
+}
+
+export interface Recipe {
+  id: string
+  name: string
+  servings: number | null
+  prep_time_min: number | null
+  cook_time_min: number | null
+  instructions: string[]
+  calories_per_serving: number | null
+  protein_per_serving_g: number | null
+  carbs_per_serving_g: number | null
+  fat_per_serving_g: number | null
+  tags: string[]
+  ingredients: RecipeIngredient[]
+  source: string
+  created_at: string
+}
+
+export interface DiaryEntry {
+  id: string
+  date: string
+  meal_slot: 'breakfast' | 'lunch' | 'dinner' | 'snack'
+  item_type: 'food' | 'recipe'
+  food_item_id: string | null
+  recipe_id: string | null
+  servings: number
+  created_at: string
+  // computed fields returned from GET /diary/:date
+  calories?: number
+  protein_g?: number
+  carbs_g?: number
+  fat_g?: number
+}
+
+export interface DailyGoal {
+  id: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  effective_date: string
+}
+
+export interface DiarySummary {
+  date: string
+  slots: Record<string, DiaryEntry[]>
+  totals: { calories: number; protein_g: number; carbs_g: number; fat_g: number }
+  goals: DailyGoal | null
+  progress: { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null }
+}
+
+// ── Foods ────────────────────────────────────────────────────────────────────
+
+export const foodsApi = {
+  list: () => request<FoodItem[]>('/foods'),
+  get: (id: string) => request<FoodItem>(`/foods/${id}`),
+  scan: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<FoodItem>('/foods/scan', { method: 'POST', body: form })
+  }
+}
+
+// ── Recipes ──────────────────────────────────────────────────────────────────
+
+export const recipesApi = {
+  list: () => request<Recipe[]>('/recipes'),
+  get: (id: string) => request<Recipe>(`/recipes/${id}`),
+  scan: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<Recipe>('/recipes/scan', { method: 'POST', body: form })
+  }
+}
+
+// ── Diary ────────────────────────────────────────────────────────────────────
+
+export const diaryApi = {
+  getDay: (date: string) => request<DiarySummary>(`/diary/${date}`),
+  addEntry: (entry: Omit<DiaryEntry, 'id' | 'created_at' | 'calories' | 'protein_g' | 'carbs_g' | 'fat_g'>) =>
+    request<DiaryEntry>('/diary', { method: 'POST', body: JSON.stringify(entry), headers: { 'Content-Type': 'application/json' } }),
+  deleteEntry: (id: string) => request<{ deleted: string }>(`/diary/${id}`, { method: 'DELETE' })
+}
+
+// ── Goals ────────────────────────────────────────────────────────────────────
+
+export const goalsApi = {
+  get: () => request<DailyGoal>('/goals'),
+  set: (goal: Omit<DailyGoal, 'id' | 'effective_date'>) =>
+    request<DailyGoal>('/goals', { method: 'POST', body: JSON.stringify(goal), headers: { 'Content-Type': 'application/json' } })
+}
