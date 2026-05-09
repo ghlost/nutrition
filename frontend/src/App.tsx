@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
-import { UtensilsCrossed, BookOpen, Camera, Target } from 'lucide-react'
+import { UtensilsCrossed, BookOpen, Camera, Target, TrendingUp } from 'lucide-react'
 import DiaryPage from './pages/Diary'
 import ScanPage from './pages/Scan'
 import RecipesPage from './pages/Recipes'
 import GoalsPage from './pages/Goals'
+import ProgressPage from './pages/Progress'
 
-type Page = 'diary' | 'scan' | 'recipes' | 'goals'
+type Page = 'diary' | 'scan' | 'recipes' | 'goals' | 'progress'
 
-const PAGES: Page[] = ['diary', 'scan', 'recipes', 'goals']
+const PAGES: Page[] = ['diary', 'scan', 'recipes', 'goals', 'progress']
 
 function getPageFromPath(): Page {
   const slug = window.location.pathname.replace('/', '').toLowerCase() as Page
@@ -36,6 +37,7 @@ export default function App() {
     { id: 'scan',    label: 'Scan',    icon: Camera },
     { id: 'recipes', label: 'Recipes', icon: BookOpen },
     { id: 'goals',   label: 'Goals',   icon: Target },
+    { id: 'progress', label: 'Progress', icon: TrendingUp },
   ] as const
 
   return (
@@ -49,6 +51,7 @@ export default function App() {
         {page === 'scan'    && <ScanPage onScanned={() => navigate('diary')} />}
         {page === 'recipes' && <RecipesPage />}
         {page === 'goals'   && <GoalsPage />}
+        {page === 'progress' && <ProgressPage />}
       </main>
 
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-white border-t border-gray-200 flex">

@@ -71,3 +71,10 @@ class DailyGoal(SQLModel, table=True):
     carbs_g: int
     fat_g: int
     effective_date: str = Field(default_factory=lambda: datetime.date.today().isoformat())
+
+class WeightEntry(SQLModel, table=True):
+    id: str = Field(default_factory=new_id, primary_key=True)
+    weight_lbs: float
+    note: Optional[str] = None
+    date: str = Field(default_factory=lambda: datetime.date.today().isoformat())
+    created_at: str = Field(default_factory=now)

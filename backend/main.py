@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import create_db
-from routers import diary, foods, recipes, goals
+from routers import diary, foods, recipes, goals, weight
 
 app = FastAPI(title="Nutrition App")
 
@@ -10,8 +10,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://*.vercel.app",          # all vercel preview URLs
-        os.getenv("FRONTEND_URL", ""),   # your production URL once known
+        "https://nutrition-aby2.onrender.com",
+        "https://*.vercel.app",
+        os.getenv("FRONTEND_URL", ""),
     ],
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,3 +30,4 @@ app.include_router(foods.router,   prefix="/api/foods",   tags=["foods"])
 app.include_router(recipes.router, prefix="/api/recipes", tags=["recipes"])
 app.include_router(diary.router,   prefix="/api/diary",   tags=["diary"])
 app.include_router(goals.router,   prefix="/api/goals",   tags=["goals"])
+app.include_router(weight.router, prefix="/api/weight", tags=["weight"])

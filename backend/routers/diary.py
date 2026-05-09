@@ -66,6 +66,52 @@ def get_diary(date: str, session: Session = Depends(get_session)):
         }
     }
 
+@router.get("/week/{start_date}")
+def get_week(start_date: str, session: Session = Depends(get_session)):
+    """Returns 7 days of diary totals starting from start_date (YYYY-MM-DD)"""
+    import datetime as dt
+
+    start = dt.date.fromisoformat(start_date)
+    days = [(start + dt.timedelta(days=i)).isoformat() for i in range(7)]
+
+    # Get current goals
+    goal = session.exec(
+        select(DailyGoal)
+        .where(DailyGoal.effective_date <= start_date)
+        .order_by(DailyGoal.effective_date.desc())
+    ).first()
+
+    week = []
+    for date in days:
+        entries = session.exec(
+            select(DiaryEntry).where(DiaryEntry.date == date)
+        ).all()
+
+        totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
+        for entry in entries:
+            nutrition = compute_nutrition(entry, session)
+            for k in totals:
+                totals[k] += nutrition[k]
+
+        week.append({
+            "date": date,
+            "totals": totals,
+            "logged": len(entries) > 0
+        })
+
+    return {
+        "days": week,
+        "goals": goal.dict() if goal else None,
+        "averages": {
+            k: round(
+                sum(d["totals"][k] for d in week if d["logged"]) /
+                max(sum(1 for d in week if d["logged"]), 1),
+                1
+            )
+            for k in ["calories", "protein_g", "carbs_g", "fat_g"]
+        }
+    }
+
 @router.post("/")
 def add_entry(entry: DiaryEntry, session: Session = Depends(get_session)):
     session.add(entry)

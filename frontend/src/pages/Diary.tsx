@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { diaryApi, foodsApi, recipesApi } from '../lib/api'
+import { diaryApi, foodsApi, recipesApi, weightApi } from '../lib/api'
 import type { DiarySummary, FoodItem, Recipe, DiaryEntry } from '../lib/api'
-import { Plus, Trash2, ChevronLeft, ChevronRight, X, Search } from 'lucide-react'
+import { Scale, Plus, Trash2, ChevronLeft, ChevronRight, X, Search } from 'lucide-react'
+import type { WeightEntry } from '../lib/api'
 
 type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack'
 const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
@@ -55,6 +56,7 @@ function AddFoodModal({ slot, onAdd, onClose }: {
   const [query, setQuery] = useState('')
   const [servings, setServings] = useState<Record<string, number>>({})
   const [adding, setAdding] = useState<string | null>(null)
+  
 
   useEffect(() => {
     foodsApi.list().then(setFoods).catch(() => {})
@@ -209,6 +211,11 @@ export default function DiaryPage() {
   const [summary, setSummary] = useState<DiarySummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [modalSlot, setModalSlot] = useState<MealSlot | null>(null)
+  const [weights, setWeights]             = useState<WeightEntry[]>([])
+  const [showLogWeight, setShowLogWeight] = useState(false)
+  const [weightInput, setWeightInput]     = useState('')
+  const [noteInput, setNoteInput]         = useState('')
+  const [loggingWeight, setLoggingWeight] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -223,6 +230,12 @@ export default function DiaryPage() {
   }, [date])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    weightApi.list()
+      .then(all => setWeights(all.filter(w => w.date === date)))
+      .catch(() => {})
+  }, [date])
 
   function shiftDate(days: number) {
     const d = new Date(date + 'T12:00:00')
@@ -246,6 +259,30 @@ export default function DiaryPage() {
   async function handleDelete(id: string) {
     await diaryApi.deleteEntry(id)
     await load()
+  }
+
+  async function logWeight() {
+    const w = parseFloat(weightInput)
+    if (!w || w < 50 || w > 700) return
+    setLoggingWeight(true)
+    try {
+      const entry = await weightApi.log({
+        weight_lbs: w,
+        note: noteInput.trim() || null,
+        date
+      })
+      setWeights(prev => [entry, ...prev])
+      setWeightInput('')
+      setNoteInput('')
+      setShowLogWeight(false)
+    } finally {
+      setLoggingWeight(false)
+    }
+  }
+
+  async function deleteWeight(id: string) {
+    await weightApi.delete(id)
+    setWeights(prev => prev.filter(w => w.id !== id))
   }
 
   const isToday = date === toDateString(new Date())
@@ -353,6 +390,75 @@ export default function DiaryPage() {
           </div>
         )
       })}
+
+      {/* Weight log */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Scale size={16} className="text-emerald-600" />
+            <span className="font-medium text-gray-900">Weight</span>
+            {weights.length > 0 && (
+              <span className="text-xs text-gray-400">{weights[0].weight_lbs} lbs</span>
+            )}
+          </div>
+          <button
+            onClick={() => setShowLogWeight(v => !v)}
+            className="flex items-center gap-1 text-emerald-600 hover:text-emerald-700 text-sm font-medium"
+          >
+            <Plus size={16} /> Log
+          </button>
+        </div>
+
+        {showLogWeight && (
+          <div className="p-4 border-b border-gray-100 space-y-3">
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step="0.1"
+                min="50"
+                max="700"
+                value={weightInput}
+                onChange={e => setWeightInput(e.target.value)}
+                placeholder="175.5 lbs"
+                className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-400"
+              />
+              <input
+                type="text"
+                value={noteInput}
+                onChange={e => setNoteInput(e.target.value)}
+                placeholder="Note (optional)"
+                className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-400"
+              />
+            </div>
+            <button
+              onClick={logWeight}
+              disabled={!weightInput || loggingWeight}
+              className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+            >
+              {loggingWeight ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        )}
+
+        {weights.length === 0 && !showLogWeight && (
+          <p className="text-center text-xs text-gray-400 py-4">No weight logged today</p>
+        )}
+
+        {weights.map((entry, i) => (
+          <div key={entry.id} className={`flex items-center gap-3 px-4 py-3 ${i < weights.length - 1 ? 'border-b border-gray-50' : ''}`}>
+            <div className="flex-1">
+              <span className="text-sm font-semibold text-gray-900">{entry.weight_lbs} lbs</span>
+              {entry.note && <span className="text-xs text-gray-400 ml-2">· {entry.note}</span>}
+            </div>
+            <button
+              onClick={() => deleteWeight(entry.id)}
+              className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        ))}
+      </div>
 
       {/* Add food modal */}
       {modalSlot && (

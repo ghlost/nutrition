@@ -93,6 +93,26 @@ export interface DiarySummary {
   progress: { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null }
 }
 
+export interface WeightEntry {
+  id: string
+  weight_lbs: number
+  note: string | null
+  date: string
+  created_at: string
+}
+
+export interface WeekDay {
+  date: string
+  totals: { calories: number; protein_g: number; carbs_g: number; fat_g: number }
+  logged: boolean
+}
+
+export interface WeekSummary {
+  days: WeekDay[]
+  goals: DailyGoal | null
+  averages: { calories: number; protein_g: number; carbs_g: number; fat_g: number }
+}
+
 // ── Foods ────────────────────────────────────────────────────────────────────
 
 export const foodsApi = {
@@ -138,4 +158,23 @@ export const goalsApi = {
   get: () => request<DailyGoal>('/goals'),
   set: (goal: Omit<DailyGoal, 'id' | 'effective_date'>) =>
     request<DailyGoal>('/goals', { method: 'POST', body: JSON.stringify(goal), headers: { 'Content-Type': 'application/json' } })
+}
+
+// ── Week ────────────────────────────────────────────────────────────────────
+
+export const summaryApi = {
+  week: (startDate: string) => request<WeekSummary>(`/diary/week/${startDate}`)
+}
+
+// ── Weight ────────────────────────────────────────────────────────────────────
+
+export const weightApi = {
+  list: () => request<WeightEntry[]>('/weight'),
+  log: (entry: Omit<WeightEntry, 'id' | 'created_at'>) =>
+    request<WeightEntry>('/weight', {
+      method: 'POST',
+      body: JSON.stringify(entry),
+      headers: { 'Content-Type': 'application/json' }
+    }),
+  delete: (id: string) => request<{ deleted: string }>(`/weight/${id}`, { method: 'DELETE' })
 }
