@@ -122,48 +122,6 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
   )
 }
 
-async function compressImage(file: File, maxWidth = 1200, quality = 0.82): Promise<File> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    const url = URL.createObjectURL(file)
-
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-
-      // If already small enough, skip compression
-      if (img.width <= maxWidth && file.size < 1.5 * 1024 * 1024) {
-        resolve(file)
-        return
-      }
-
-      const scale = Math.min(1, maxWidth / img.width)
-      const canvas = document.createElement('canvas')
-      canvas.width  = Math.round(img.width  * scale)
-      canvas.height = Math.round(img.height * scale)
-
-      const ctx = canvas.getContext('2d')!
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { resolve(file); return }
-          const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
-            type: 'image/jpeg',
-            lastModified: Date.now(),
-          })
-          console.log(`Compressed: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`)
-          resolve(compressed)
-        },
-        'image/jpeg',
-        quality
-      )
-    }
-
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
-    img.src = url
-  })
-}
-
 export default function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
