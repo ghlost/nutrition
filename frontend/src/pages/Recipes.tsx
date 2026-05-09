@@ -13,9 +13,9 @@ function RecipeCard({ recipe, onEdit }: {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
       {/* Header */}
-      <button
+      <div
         onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-start gap-3 p-4 text-left hover:bg-gray-50 transition-colors"
+        className="w-full flex items-start gap-3 p-4 text-left hover:bg-gray-50 transition-colors cursor-pointer"
       >
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900">{recipe.name}</p>
@@ -63,7 +63,7 @@ function RecipeCard({ recipe, onEdit }: {
           </button>
           {expanded ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
         </div>
-      </button>
+      </div>
 
       {/* Expanded content */}
       {expanded && (

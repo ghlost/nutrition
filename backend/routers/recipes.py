@@ -6,9 +6,23 @@ from services import extract_recipe, fetch_recipe_from_url
 from services.embeddings import index_recipe, search_recipes, delete_recipe
 from pydantic import BaseModel
 import json
+from typing import Optional
 
 class UrlRequest(BaseModel):
     url: str
+
+class RecipeUpdate(BaseModel):
+    name: Optional[str] = None
+    servings: Optional[int] = None
+    prep_time_min: Optional[int] = None
+    cook_time_min: Optional[int] = None
+    calories_per_serving: Optional[float] = None
+    protein_per_serving_g: Optional[float] = None
+    carbs_per_serving_g: Optional[float] = None
+    fat_per_serving_g: Optional[float] = None
+    tags: Optional[list[str]] = None
+    instructions: Optional[list[str]] = None
+    ingredients: Optional[list[dict]] = None
 
 router = APIRouter()
 
@@ -68,6 +82,61 @@ def get_recipe(recipe_id: str, session: Session = Depends(get_session)):
         "tags": json.loads(recipe.tags) if recipe.tags else [],
         "ingredients": [i.dict() for i in ingredients]
     }
+
+@router.put("/{recipe_id}")
+def update_recipe(recipe_id: str, updates: RecipeUpdate, session: Session = Depends(get_session)):
+    recipe = session.get(Recipe, recipe_id)
+    if not recipe:
+        raise HTTPException(404, "Recipe not found")
+
+    data = updates.model_dump(exclude_none=True)
+
+    # Handle ingredients separately
+    ingredients_data = data.pop("ingredients", None)
+    if ingredients_data is not None:
+        # Delete existing and reinsert
+        existing = session.exec(
+            select(RecipeIngredient).where(RecipeIngredient.recipe_id == recipe_id)
+        ).all()
+        for ing in existing:
+            session.delete(ing)
+        session.flush()
+        for ing in ingredients_data:
+            if not ing.get("ingredient"):
+                continue
+            session.add(RecipeIngredient(
+                recipe_id=recipe_id,
+                quantity=ing.get("quantity"),
+                unit=ing.get("unit"),
+                ingredient=ing["ingredient"],
+                notes=ing.get("notes"),
+            ))
+
+    if "tags" in data:
+        data["tags"] = json.dumps(data["tags"])
+    if "instructions" in data:
+        data["instructions"] = json.dumps(data["instructions"])
+
+    for key, value in data.items():
+        setattr(recipe, key, value)
+
+    session.add(recipe)
+    session.commit()
+    session.refresh(recipe)
+
+    final_ingredients = session.exec(
+        select(RecipeIngredient).where(RecipeIngredient.recipe_id == recipe_id)
+    ).all()
+
+    result = {
+        **recipe.dict(),
+        "instructions": json.loads(recipe.instructions) if recipe.instructions else [],
+        "tags":         json.loads(recipe.tags) if recipe.tags else [],
+        "ingredients":  [i.dict() for i in final_ingredients]
+    }
+
+    index_recipe(recipe_id, result)
+    return result
 
 @router.post("/scan")
 def scan_recipe(
