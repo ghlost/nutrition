@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react'
 import { foodsApi, recipesApi } from '../lib/api'
-import { Camera, Upload, Loader2, CheckCircle, ChevronRight } from 'lucide-react'
+import { Pencil, Camera, Upload, Loader2, CheckCircle, ChevronRight } from 'lucide-react'
+import EditFoodModal from '../components/EditFoodModal'
+import EditRecipeModal from '../components/EditRecipeModal'
 
 type Mode = 'label' | 'recipe' | 'url'
 type State = 'idle' | 'preview' | 'scanning' | 'done' | 'error'
@@ -56,6 +58,7 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const compressedFileRef = useRef<File | null>(null)
   const [url, setUrl] = useState('')
+  const [editing, setEditing] = useState(false)
 
   async function scanUrl() {
     if (!url.trim()) return
@@ -127,6 +130,7 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
     setPreview(null)
     setResult(null)
     setError(null)
+    setEditing(false)
     compressedFileRef.current = null
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -283,8 +287,18 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-            <p className="font-semibold text-gray-900">{result.name}</p>
-            {result.brand && <p className="text-sm text-gray-500">{result.brand}</p>}
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-semibold text-gray-900">{result.name}</p>
+                {result.brand && <p className="text-sm text-gray-500">{result.brand}</p>}
+              </div>
+              <button
+                onClick={() => setEditing(true)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <Pencil size={16} />
+              </button>
+            </div>
 
             {mode === 'label' ? (
               <div className="grid grid-cols-2 gap-2">
@@ -333,6 +347,22 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
             </button>
           </div>
         </div>
+      )}
+
+      {editing && mode === 'label' && result && (
+        <EditFoodModal
+          item={result}
+          onSave={updated => { setResult(updated); setEditing(false) }}
+          onClose={() => setEditing(false)}
+        />
+      )}
+
+      {editing && (mode === 'recipe' || mode === 'url') && result && (
+        <EditRecipeModal
+          recipe={result}
+          onSave={updated => { setResult(updated); setEditing(false) }}
+          onClose={() => setEditing(false)}
+        />
       )}
     </div>
   )

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { recipesApi } from '../lib/api'
 import type { Recipe } from '../lib/api'
-import { X, Save, Plus, Trash2 } from 'lucide-react'
+import { X, Save, Plus } from 'lucide-react'
 
 export default function EditRecipeModal({
   recipe,
