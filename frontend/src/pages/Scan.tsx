@@ -2,8 +2,50 @@ import { useState, useRef } from 'react'
 import { foodsApi, recipesApi } from '../lib/api'
 import { Camera, Upload, Loader2, CheckCircle, ChevronRight } from 'lucide-react'
 
-type Mode = 'label' | 'recipe'
+type Mode = 'label' | 'recipe' | 'url'
 type State = 'idle' | 'preview' | 'scanning' | 'done' | 'error'
+
+async function compressImage(file: File, maxWidth = 1200, quality = 0.82): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+
+      // If already small enough, skip compression
+      if (img.width <= maxWidth && file.size < 1.5 * 1024 * 1024) {
+        resolve(file)
+        return
+      }
+
+      const scale = Math.min(1, maxWidth / img.width)
+      const canvas = document.createElement('canvas')
+      canvas.width  = Math.round(img.width  * scale)
+      canvas.height = Math.round(img.height * scale)
+
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { resolve(file); return }
+          const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          })
+          console.log(`Compressed: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`)
+          resolve(compressed)
+        },
+        'image/jpeg',
+        quality
+      )
+    }
+
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+    img.src = url
+  })
+}
 
 export default function ScanPage({ onScanned }: { onScanned: () => void }) {
   const [mode, setMode] = useState<Mode>('label')
@@ -12,17 +54,49 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const compressedFileRef = useRef<File | null>(null)
+  const [url, setUrl] = useState('')
 
-  function handleFile(file: File) {
+  async function scanUrl() {
+    if (!url.trim()) return
+    setState('scanning')
+    setError(null)
+    try {
+      const res = await recipesApi.fromUrl(url.trim())
+      setResult(res)
+      setState('done')
+    } catch (e: any) {
+      setError(e.message || 'Could not extract recipe from URL')
+      setState('error')
+    }
+  }
+
+  async function handleFile(file: File) {
     if (!file.type.startsWith('image/')) {
       setError('Please select an image file')
       return
     }
-    const url = URL.createObjectURL(file)
-    setPreview(url)
+
+    // Don't block UI — go to preview immediately with original
+    // then swap to compressed version silently
+    const originalUrl = URL.createObjectURL(file)
+    setPreview(originalUrl)
     setState('preview')
     setResult(null)
     setError(null)
+
+    // Compress in background — console log fires here
+    const compressed = await compressImage(
+      file,
+      mode === 'recipe' ? 1600 : 1200,
+      mode === 'recipe' ? 0.78 : 0.82
+    )
+    compressedFileRef.current = compressed
+
+    // Swap preview to compressed version
+    URL.revokeObjectURL(originalUrl)
+    const compressedUrl = URL.createObjectURL(compressed)
+    setPreview(compressedUrl)
   }
 
   function onDrop(e: React.DragEvent) {
@@ -32,7 +106,7 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
   }
 
   async function scan() {
-    const file = fileRef.current?.files?.[0]
+    const file = compressedFileRef.current
     if (!file) return
     setState('scanning')
     setError(null)
@@ -53,6 +127,7 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
     setPreview(null)
     setResult(null)
     setError(null)
+    compressedFileRef.current = null
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -62,20 +137,24 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
 
       {/* Mode toggle */}
       <div className="flex bg-gray-100 rounded-xl p-1">
-        {(['label', 'recipe'] as Mode[]).map(m => (
+        {([
+          { id: 'label', label: '🏷️ Nutrition Label' },
+          { id: 'recipe', label: '📋 Recipe Photo' },
+          { id: 'url', label: '🔗 Recipe URL' },
+        ] as { id: Mode; label: string }[]).map(m => (
           <button
-            key={m}
-            onClick={() => { setMode(m); reset() }}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors capitalize
-              ${mode === m ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            key={m.id}
+            onClick={() => { setMode(m.id); reset() }}
+            className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors
+              ${mode === m.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            {m === 'label' ? '🏷️ Nutrition Label' : '📋 Recipe'}
+            {m.label}
           </button>
         ))}
       </div>
 
       {/* Upload area */}
-      {state === 'idle' && (
+      {(mode === 'label' || mode === 'recipe') && state === 'idle' && (
         <div
           onDrop={onDrop}
           onDragOver={e => e.preventDefault()}
@@ -107,11 +186,61 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
       />
 
+      {/* URL scan area */}
+      {mode === 'url' && state === 'idle' && (
+        <div className="space-y-3">
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <p className="text-sm text-gray-500">
+              Paste any recipe URL — AllRecipes, NYT Cooking, Serious Eats, etc.
+            </p>
+            <input
+              type="url"
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && scanUrl()}
+              placeholder="https://www.allrecipes.com/recipe/..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-400 transition-colors"
+            />
+            <button
+              onClick={scanUrl}
+              disabled={!url.trim()}
+              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+            >
+              Extract Recipe
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === 'url' && state === 'scanning' && (
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
+          <Loader2 size={32} className="animate-spin text-emerald-600" />
+          <p className="text-sm text-gray-500">Fetching and extracting recipe...</p>
+        </div>
+      )}
+
+      {mode === 'url' && state === 'error' && (
+        <div className="space-y-3">
+          <p className="text-sm text-red-500 text-center">{error}</p>
+          <button
+            onClick={() => { setState('idle'); setError(null) }}
+            className="w-full py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600"
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       {/* Preview */}
       {(state === 'preview' || state === 'scanning' || state === 'error') && preview && (
         <div className="space-y-3">
           <div className="relative rounded-xl overflow-hidden border border-gray-200">
-            <img src={preview} alt="Preview" className="w-full object-contain max-h-72" />
+            <img src={preview} alt="Preview" className="w-full object-contain max-h-72" />  {/* ← this was missing */}
+            {compressedFileRef.current && (
+              <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-lg">
+                {(compressedFileRef.current.size / 1024).toFixed(0)}KB
+              </div>
+            )}
             {state === 'scanning' && (
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                 <div className="bg-white rounded-xl px-5 py-3 flex items-center gap-3">

@@ -1,4 +1,6 @@
-const BASE = '/api'
+const BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, options)
@@ -65,7 +67,9 @@ export interface DiaryEntry {
   recipe_id: string | null
   servings: number
   created_at: string
-  // computed fields returned from GET /diary/:date
+  // computed fields
+  name?: string
+  brand?: string | null
   calories?: number
   protein_g?: number
   carbs_g?: number
@@ -106,11 +110,17 @@ export const foodsApi = {
 export const recipesApi = {
   list: () => request<Recipe[]>('/recipes'),
   get: (id: string) => request<Recipe>(`/recipes/${id}`),
+  search:     (q: string) => request<Recipe[]>(`/recipes/search?q=${encodeURIComponent(q)}`),
   scan: (file: File) => {
     const form = new FormData()
     form.append('file', file)
     return request<Recipe>('/recipes/scan', { method: 'POST', body: form })
-  }
+  },
+  fromUrl: (url: string) => request<Recipe>('/recipes/url', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+    headers: { 'Content-Type': 'application/json' }
+  })
 }
 
 // ── Diary ────────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import create_db
@@ -7,7 +8,11 @@ app = FastAPI(title="Nutrition App")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://*.vercel.app",          # all vercel preview URLs
+        os.getenv("FRONTEND_URL", ""),   # your production URL once known
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )

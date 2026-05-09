@@ -1,6 +1,8 @@
+import os
 from sqlmodel import SQLModel, create_engine, Session
 
-DATABASE_URL = "sqlite:///./nutrition.db"
+# Use /tmp on Render (ephemeral but fine for solo use), or a persistent disk
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./nutrition.db")
 engine = create_engine(DATABASE_URL, echo=False)
 
 def create_db():

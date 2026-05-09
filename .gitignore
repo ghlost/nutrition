@@ -1,2 +1,11 @@
 venv/
 .env
+.env.production
+chroma_db/
+__pycache__/
+*.pyc
+nutrition.db
+node_modules/
+dist/
+.DS_Store
+EOF

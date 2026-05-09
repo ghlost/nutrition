@@ -47,7 +47,7 @@ class Recipe(SQLModel, table=True):
 class RecipeIngredient(SQLModel, table=True):
     id: str = Field(default_factory=new_id, primary_key=True)
     recipe_id: str = Field(foreign_key="recipe.id")
-    quantity: float
+    quantity: Optional[float] = None
     unit: Optional[str] = None
     ingredient: str
     notes: Optional[str] = None

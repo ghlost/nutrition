@@ -12,6 +12,8 @@ def compute_nutrition(entry: DiaryEntry, session: Session) -> dict:
         food = session.get(FoodItem, entry.food_item_id)
         if food:
             return {
+                "name": food.name,
+                "brand": food.brand,
                 "calories": (food.calories or 0) * s,
                 "protein_g": (food.protein_g or 0) * s,
                 "carbs_g": (food.carbs_g or 0) * s,
@@ -21,12 +23,14 @@ def compute_nutrition(entry: DiaryEntry, session: Session) -> dict:
         recipe = session.get(Recipe, entry.recipe_id)
         if recipe:
             return {
+                "name": recipe.name,
+                "brand": None,
                 "calories": (recipe.calories_per_serving or 0) * s,
                 "protein_g": (recipe.protein_per_serving_g or 0) * s,
                 "carbs_g": (recipe.carbs_per_serving_g or 0) * s,
                 "fat_g": (recipe.fat_per_serving_g or 0) * s,
             }
-    return {"calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0}
+    return {"name": "Unknown", "brand": None, "calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0}
 
 @router.get("/{date}")
 def get_diary(date: str, session: Session = Depends(get_session)):
