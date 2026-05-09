@@ -5,15 +5,17 @@ from database import create_db
 from routers import diary, foods, recipes, goals, weight
 
 app = FastAPI(title="Nutrition App")
+origins = [
+    "http://localhost:5173",
+    "https://nutrition-aby2.onrender.com",
+    "https://nutrition-vercel-eta.vercel.app",
+    os.getenv("FRONTEND_URL", ""),
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://nutrition-aby2.onrender.com",
-        "https://*.vercel.app",
-        os.getenv("FRONTEND_URL", ""),
-    ],
+    allow_origins=[o for o in origins if o],  # filter empty strings
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
