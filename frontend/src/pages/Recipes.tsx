@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react'
 import { recipesApi } from '../lib/api'
 import type { Recipe } from '../lib/api'
-import { ChevronDown, ChevronUp, Clock, Users, Flame, Search } from 'lucide-react'
+import { Pencil, ChevronDown, ChevronUp, Clock, Users, Flame, Search } from 'lucide-react'
+import EditRecipeModal from '../components/EditRecipeModal'
 
-function RecipeCard({ recipe }: { recipe: Recipe }) {
+function RecipeCard({ recipe, onEdit }: { 
+    recipe: Recipe
+    onEdit: (recipe: Recipe) => void 
+  }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -50,8 +54,14 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
           </div>
         </div>
 
-        <div className="shrink-0 text-gray-400 mt-1">
-          {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        <div className="shrink-0 flex items-center gap-2 mt-1">
+          <button
+            onClick={e => { e.stopPropagation(); onEdit(recipe) }}
+            className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <Pencil size={15} />
+          </button>
+          {expanded ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
         </div>
       </button>
 
@@ -128,6 +138,7 @@ export default function RecipesPage() {
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<Recipe[] | null>(null)
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
 
   useEffect(() => {
     recipesApi.list()
@@ -152,6 +163,11 @@ export default function RecipesPage() {
     } finally {
       setSearching(false)
     }
+  }
+
+  function handleRecipeSaved(updated: Recipe) {
+    setRecipes(prev => prev.map(r => r.id === updated.id ? updated : r))
+    setEditingRecipe(null)
   }
 
   // Replace `filtered` with:
@@ -206,8 +222,20 @@ export default function RecipesPage() {
 
       {/* Recipe list */}
       {displayed.map(recipe => (
-        <RecipeCard key={recipe.id} recipe={recipe} />
+        <RecipeCard
+          key={recipe.id}
+          recipe={recipe}
+          onEdit={setEditingRecipe}
+        />
       ))}
+
+      {editingRecipe && (
+        <EditRecipeModal
+          recipe={editingRecipe}
+          onSave={handleRecipeSaved}
+          onClose={() => setEditingRecipe(null)}
+        />
+      )}
     </div>
   )
 }

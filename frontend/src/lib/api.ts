@@ -116,8 +116,14 @@ export interface WeekSummary {
 // ── Foods ────────────────────────────────────────────────────────────────────
 
 export const foodsApi = {
-  list: () => request<FoodItem[]>('/foods'),
-  get: (id: string) => request<FoodItem>(`/foods/${id}`),
+  list:   () => request<FoodItem[]>('/foods'),
+  get:    (id: string) => request<FoodItem>(`/foods/${id}`),
+  update: (id: string, updates: Partial<FoodItem>) =>
+    request<FoodItem>(`/foods/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+      headers: { 'Content-Type': 'application/json' }
+    }),
   scan: (file: File) => {
     const form = new FormData()
     form.append('file', file)
@@ -128,9 +134,15 @@ export const foodsApi = {
 // ── Recipes ──────────────────────────────────────────────────────────────────
 
 export const recipesApi = {
-  list: () => request<Recipe[]>('/recipes'),
-  get: (id: string) => request<Recipe>(`/recipes/${id}`),
-  search:     (q: string) => request<Recipe[]>(`/recipes/search?q=${encodeURIComponent(q)}`),
+  list:     () => request<Recipe[]>('/recipes'),
+  get:      (id: string) => request<Recipe>(`/recipes/${id}`),
+  search:   (q: string) => request<Recipe[]>(`/recipes/search?q=${encodeURIComponent(q)}`),
+  update:   (id: string, updates: Partial<Recipe>) =>
+    request<Recipe>(`/recipes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+      headers: { 'Content-Type': 'application/json' }
+    }),
   scan: (file: File) => {
     const form = new FormData()
     form.append('file', file)

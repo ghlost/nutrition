@@ -3,6 +3,23 @@ from sqlmodel import Session, select
 from database import get_session
 from models import FoodItem
 from services import extract_nutrition_label
+from pydantic import BaseModel
+from typing import Optional
+
+class FoodItemUpdate(BaseModel):
+    name: Optional[str] = None
+    brand: Optional[str] = None
+    serving_size: Optional[str] = None
+    calories: Optional[float] = None
+    protein_g: Optional[float] = None
+    carbs_g: Optional[float] = None
+    fat_g: Optional[float] = None
+    fiber_g: Optional[float] = None
+    sugar_g: Optional[float] = None
+    sodium_mg: Optional[float] = None
+    saturated_fat_g: Optional[float] = None
+    trans_fat_g: Optional[float] = None
+    cholesterol_mg: Optional[float] = None
 
 router = APIRouter()
 
@@ -35,6 +52,18 @@ def scan_label(
         raise HTTPException(422, f"Could not extract nutrition data: {str(e)}")
 
     item = FoodItem(**extracted)
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+@router.put("/{food_id}")
+def update_food(food_id: str, updates: FoodItemUpdate, session: Session = Depends(get_session)):
+    item = session.get(FoodItem, food_id)
+    if not item:
+        raise HTTPException(404, "Food item not found")
+    for key, value in updates.model_dump(exclude_none=True).items():
+        setattr(item, key, value)
     session.add(item)
     session.commit()
     session.refresh(item)

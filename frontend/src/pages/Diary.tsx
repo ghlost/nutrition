@@ -216,6 +216,11 @@ export default function DiaryPage() {
   const [weightInput, setWeightInput]     = useState('')
   const [noteInput, setNoteInput]         = useState('')
   const [loggingWeight, setLoggingWeight] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: string
+    name: string
+    timer: ReturnType<typeof setTimeout>
+  } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -256,9 +261,26 @@ export default function DiaryPage() {
     await load()
   }
 
-  async function handleDelete(id: string) {
-    await diaryApi.deleteEntry(id)
-    await load()
+  function handleDelete(id: string, name: string) {
+    // If there's already a pending delete, fire it immediately
+    if (pendingDelete) {
+      clearTimeout(pendingDelete.timer)
+      diaryApi.deleteEntry(pendingDelete.id).then(load)
+    }
+
+    const timer = setTimeout(async () => {
+      await diaryApi.deleteEntry(id)
+      await load()
+      setPendingDelete(null)
+    }, 4000)
+
+    setPendingDelete({ id, name, timer })
+  }
+
+  function undoDelete() {
+    if (!pendingDelete) return
+    clearTimeout(pendingDelete.timer)
+    setPendingDelete(null)
   }
 
   async function logWeight() {
@@ -363,7 +385,11 @@ export default function DiaryPage() {
             ) : (
               <div className="divide-y divide-gray-50">
                 {entries.map(entry => (
-                  <div key={entry.id} className="flex items-center gap-3 px-4 py-3">
+                  <div
+                    key={entry.id}
+                    className={`flex items-center gap-3 px-4 py-3 transition-opacity
+                      ${pendingDelete?.id === entry.id ? 'opacity-40' : 'opacity-100'}`}
+                  >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 truncate">
                         {entry.name ?? 'Unknown'}
@@ -378,7 +404,7 @@ export default function DiaryPage() {
                       </p>
                     </div>
                     <button
-                      onClick={() => handleDelete(entry.id)}
+                      onClick={() => handleDelete(entry.id, entry.name ?? 'item')}
                       className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
                     >
                       <Trash2 size={15} />
@@ -459,6 +485,33 @@ export default function DiaryPage() {
           </div>
         ))}
       </div>
+
+      {/* Undo toast */}
+      {pendingDelete && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm z-50">
+          <div className="bg-gray-900 text-white rounded-2xl px-4 py-3 flex items-center gap-3 shadow-lg">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">
+                Removed {pendingDelete.name}
+              </p>
+              <div className="mt-1.5 h-0.5 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-white rounded-full"
+                  style={{
+                    animation: 'shrink 4s linear forwards'
+                  }}
+                />
+              </div>
+            </div>
+            <button
+              onClick={undoDelete}
+              className="shrink-0 text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition-colors px-1"
+            >
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add food modal */}
       {modalSlot && (
