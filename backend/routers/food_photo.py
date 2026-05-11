@@ -4,7 +4,8 @@ from pydantic import BaseModel
 from database import get_session
 from services import run_food_scan_step1, run_food_scan_step2
 from typing import Optional
-from models import FoodItem
+from models import FoodItem, User
+from auth import get_current_user
 
 router = APIRouter()
 
@@ -24,7 +25,8 @@ class SaveEstimatePayload(BaseModel):
 @router.post("/scan")
 def scan_food_photo(
     file: UploadFile = File(...),
-    description: Optional[str] = Form(None)
+    description: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user)
 ):
     if not file.content_type.startswith("image/"):
         raise HTTPException(400, "File must be an image")
@@ -41,8 +43,10 @@ def scan_food_photo(
 
 
 @router.post("/estimate")
-def estimate_food(payload: AnswersPayload):
-    """Step 2 — estimate macros after user answers questions."""
+def estimate_food(
+    payload: AnswersPayload,
+    current_user: User = Depends(get_current_user)
+):
     try:
         result = run_food_scan_step2(
             payload.identified,
@@ -52,20 +56,23 @@ def estimate_food(payload: AnswersPayload):
         return result
     except Exception as e:
         raise HTTPException(422, f"Could not estimate nutrition: {str(e)}")
-    
+
+
 @router.post("/save")
 def save_estimate(
     payload: SaveEstimatePayload,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     item = FoodItem(
         name=payload.name,
-        serving_size=payload.serving_size,
+        serving_size="1 serving (estimated from photo)",
         calories=payload.calories,
         protein_g=payload.protein_g,
         carbs_g=payload.carbs_g,
         fat_g=payload.fat_g,
         source="photo_estimate",
+        created_by=current_user.id,   # ← attributed
     )
     session.add(item)
     session.commit()

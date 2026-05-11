@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import Session, select
-from database import get_session
-from models import FoodItem
-from services import extract_nutrition_label
 from pydantic import BaseModel
+from database import get_session
+from models import FoodItem, User
+from services import extract_nutrition_label
 from typing import Optional
+from auth import get_current_user
 
 class FoodItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -37,7 +38,8 @@ def get_food(food_id: str, session: Session = Depends(get_session)):
 @router.post("/scan")
 def scan_label(
     file: UploadFile = File(...),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     if file.content_type not in ("image/jpeg", "image/png", "image/webp", "image/heic"):
         raise HTTPException(400, "File must be an image (JPEG, PNG, WEBP, or HEIC)")
@@ -51,7 +53,7 @@ def scan_label(
     except Exception as e:
         raise HTTPException(422, f"Could not extract nutrition data: {str(e)}")
 
-    item = FoodItem(**extracted)
+    item = FoodItem(**extracted, created_by=current_user.id)
     session.add(item)
     session.commit()
     session.refresh(item)

@@ -2,13 +2,75 @@ const BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api'
 
+
+// Token management
+export const auth = {
+  getToken: () => localStorage.getItem('auth_token'),
+  setToken: (token: string) => localStorage.setItem('auth_token', token),
+  getUser:  () => {
+    const u = localStorage.getItem('auth_user')
+    return u ? JSON.parse(u) : null
+  },
+  setUser:  (user: object) => localStorage.setItem('auth_user', JSON.stringify(user)),
+  clear:    () => {
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_user')
+  },
+  isLoggedIn: () => !!localStorage.getItem('auth_token'),
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, options)
+  const token = auth.getToken()
+
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      ...options?.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+  })
+
+  if (res.status === 401) {
+    auth.clear()
+    window.location.href = '/login'
+    throw new Error('Session expired')
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
     throw new Error(err.detail || `HTTP ${res.status}`)
   }
+
   return res.json()
+}
+
+// Auth API
+export interface AuthUser {
+  id: string
+  email: string
+  username: string
+}
+
+export interface AuthResponse {
+  access_token: string
+  token_type: string
+  user: AuthUser
+}
+
+export const authApi = {
+  register: (email: string, username: string, password: string) =>
+    request<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, username, password }),
+      headers: { 'Content-Type': 'application/json' }
+    }),
+  login: (email: string, password: string) =>
+    request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+      headers: { 'Content-Type': 'application/json' }
+    }),
+  me: () => request<AuthUser>('/auth/me'),
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────

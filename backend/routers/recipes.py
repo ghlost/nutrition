@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import Session, select
+from pydantic import BaseModel
 from database import get_session
-from models import Recipe, RecipeIngredient
+from models import Recipe, RecipeIngredient, User
 from services import extract_recipe, fetch_recipe_from_url
 from services.embeddings import index_recipe, search_recipes, delete_recipe
-from pydantic import BaseModel
 import json
 from typing import Optional
+from auth import get_current_user
 
 class UrlRequest(BaseModel):
     url: str
@@ -141,7 +142,8 @@ def update_recipe(recipe_id: str, updates: RecipeUpdate, session: Session = Depe
 @router.post("/scan")
 def scan_recipe(
     file: UploadFile = File(...),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     if file.content_type not in ("image/jpeg", "image/png", "image/webp", "image/heic"):
         raise HTTPException(400, "File must be an image (JPEG, PNG, WEBP, or HEIC)")
@@ -154,15 +156,13 @@ def scan_recipe(
         extracted = extract_recipe(image_bytes)
     except Exception as e:
         import traceback
-        traceback.print_exc()  # prints full stack to terminal
+        traceback.print_exc()
         raise HTTPException(422, f"Could not extract recipe: {str(e)}")
 
-    # Pop these explicitly before building the model
     ingredients_data = extracted.pop("ingredients", [])
     instructions     = json.dumps(extracted.pop("instructions", []))
     tags             = json.dumps(extracted.pop("tags", []))
 
-    # Whitelist only fields that exist on Recipe model
     recipe = Recipe(
         name                  = extracted.get("name", "Unknown Recipe"),
         servings              = extracted.get("servings"),
@@ -175,13 +175,12 @@ def scan_recipe(
         instructions          = instructions,
         tags                  = tags,
         source                = "screenshot",
+        created_by            = current_user.id,   # ← attributed
     )
-
     session.add(recipe)
     session.flush()
 
     for ing in ingredients_data:
-        # skip malformed ingredients with no name
         if not ing.get("ingredient"):
             continue
         ingredient = RecipeIngredient(recipe_id=recipe.id, **ing)
@@ -193,7 +192,7 @@ def scan_recipe(
     index_recipe(recipe.id, {
         **recipe.dict(),
         "instructions": json.loads(recipe.instructions),
-        "tags":         json.loads(recipe.tags),
+        "tags":         json.loads(recipe.tags) if recipe.tags else [],
         "ingredients":  ingredients_data,
     })
 
@@ -204,10 +203,12 @@ def scan_recipe(
         "ingredients":  ingredients_data,
     }
 
+
 @router.post("/url")
 def recipe_from_url(
     body: UrlRequest,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     try:
         extracted = fetch_recipe_from_url(body.url)
@@ -230,6 +231,7 @@ def recipe_from_url(
         instructions          = instructions,
         tags                  = tags,
         source                = "url",
+        created_by            = current_user.id,   # ← attributed
     )
     session.add(recipe)
     session.flush()
@@ -246,7 +248,7 @@ def recipe_from_url(
     index_recipe(recipe.id, {
         **recipe.dict(),
         "instructions": json.loads(recipe.instructions),
-        "tags":         json.loads(recipe.tags),
+        "tags":         json.loads(recipe.tags) if recipe.tags else [],
         "ingredients":  ingredients_data,
     })
 

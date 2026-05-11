@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from database import get_session
-from models import DiaryEntry, FoodItem, Recipe, DailyGoal
+from auth import get_current_user
+from models import DiaryEntry, FoodItem, Recipe, DailyGoal, User
 import datetime
 
 router = APIRouter()
@@ -33,9 +34,15 @@ def compute_nutrition(entry: DiaryEntry, session: Session) -> dict:
     return {"name": "Unknown", "brand": None, "calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0}
 
 @router.get("/{date}")
-def get_diary(date: str, session: Session = Depends(get_session)):
+def get_diary(
+    date: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
     entries = session.exec(
-        select(DiaryEntry).where(DiaryEntry.date == date)
+        select(DiaryEntry)
+        .where(DiaryEntry.date == date)
+        .where(DiaryEntry.user_id == current_user.id)  # ← filter by user
     ).all()
 
     slots = {"breakfast": [], "lunch": [], "dinner": [], "snack": []}
@@ -67,7 +74,11 @@ def get_diary(date: str, session: Session = Depends(get_session)):
     }
 
 @router.get("/week/{start_date}")
-def get_week(start_date: str, session: Session = Depends(get_session)):
+def get_week(
+    start_date: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
     """Returns 7 days of diary totals starting from start_date (YYYY-MM-DD)"""
     import datetime as dt
 
@@ -84,7 +95,7 @@ def get_week(start_date: str, session: Session = Depends(get_session)):
     week = []
     for date in days:
         entries = session.exec(
-            select(DiaryEntry).where(DiaryEntry.date == date)
+            select(DiaryEntry).where(DiaryEntry.date == date).where(DiaryEntry.user_id == current_user.id)
         ).all()
 
         totals = {"calories": 0.0, "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0}
@@ -113,16 +124,25 @@ def get_week(start_date: str, session: Session = Depends(get_session)):
     }
 
 @router.post("/")
-def add_entry(entry: DiaryEntry, session: Session = Depends(get_session)):
+def add_entry(
+    entry: DiaryEntry,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    entry.user_id = current_user.id  # ← always set from token, never trust client
     session.add(entry)
     session.commit()
     session.refresh(entry)
     return entry
 
 @router.delete("/{entry_id}")
-def delete_entry(entry_id: str, session: Session = Depends(get_session)):
+def delete_entry(
+    entry_id: str,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
     entry = session.get(DiaryEntry, entry_id)
-    if not entry:
+    if not entry or entry.user_id != current_user.id:  # ← ownership check
         raise HTTPException(404, "Entry not found")
     session.delete(entry)
     session.commit()
