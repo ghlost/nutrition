@@ -30,15 +30,16 @@ def _encode(image_bytes: bytes) -> tuple:
 def identify_foods(image_bytes: bytes, description: str | None = None) -> dict:
     b64, mime = _encode(image_bytes)
 
-    # Prepend user description to guide the model
     context = ""
     if description:
-        context = f"""The user provided this description of the meal: "{description}"
-Use this as primary context. The photo may not clearly show all details.\n\n"""
+        # Escape any quotes in the description to prevent prompt injection
+        safe_desc = description.replace('"', "'").replace('\n', ' ')
+        context = f"""The user described this meal as: "{safe_desc}"
+Use this as primary context. Prioritize this description over visual inference.\n\n"""
 
     response = haiku.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=600,
+        max_tokens=800,  # bump tokens — complex meals need more room
         messages=[{
             "role": "user",
             "content": [
@@ -48,32 +49,61 @@ Use this as primary context. The photo may not clearly show all details.\n\n"""
                 },
                 {
                     "type": "text",
-                    "text": f"""{context}Analyze this food photo. Return ONLY valid JSON, no markdown.
+                    "text": f"""{context}Analyze this food photo. Return ONLY valid JSON, no markdown, no extra text.
+
 {{
   "foods": [
     {{
-      "name": string,
-      "preparation": string,
-      "estimated_portion": string,
-      "confidence": "high" | "medium" | "low"
+      "name": "string",
+      "preparation": "string",
+      "estimated_portion": "string",
+      "confidence": "high"
     }}
   ],
-  "meal_type": string,
-  "visible_plate_size": "small" | "medium" | "large" | "unknown",
-  "complexity": "simple" | "mixed" | "complex",
-  "notes": string
+  "meal_type": "string",
+  "visible_plate_size": "medium",
+  "complexity": "simple",
+  "notes": "string"
 }}
-Be specific about preparation (grilled, fried, steamed, raw).
-Estimate portion in common units (1 cup, 6oz, 2 tbsp).
-If a description was provided, prioritize it over visual inference."""
+
+Rules:
+- confidence must be exactly: high, medium, or low
+- visible_plate_size must be exactly: small, medium, large, or unknown
+- complexity must be exactly: simple, mixed, or complex
+- Keep notes under 100 characters
+- No trailing commas
+- Return only the JSON object, nothing else"""
                 }
             ]
         }]
     )
 
     raw = response.content[0].text.strip()
-    clean = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return json.loads(clean)
+
+    # More aggressive cleaning
+    clean = raw
+    clean = clean.removeprefix("```json").removeprefix("```")
+    clean = clean.removesuffix("```").strip()
+
+    # Find the JSON object boundaries in case there's extra text
+    start = clean.find('{')
+    end   = clean.rfind('}')
+    if start != -1 and end != -1:
+        clean = clean[start:end + 1]
+
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError as e:
+        print(f"JSON parse error: {e}")
+        print(f"Raw response: {raw}")
+        # Return a safe fallback so the pipeline doesn't crash
+        return {
+            "foods": [{"name": description or "Unknown food", "preparation": "unknown", "estimated_portion": "1 serving", "confidence": "low"}],
+            "meal_type": "unknown",
+            "visible_plate_size": "unknown",
+            "complexity": "simple",
+            "notes": "Could not fully analyze image"
+        }
 
 # ── Step 2: Context — generate follow-up questions ───────────────────────────
 
@@ -123,7 +153,8 @@ Max 3 questions. Only ask what's genuinely unclear from the photo."""
 # ── Step 3: Estimation — calculate macros ────────────────────────────────────
 
 def estimate_macros(identified: dict, questions: list, answers: dict) -> dict:
-    """Sonnet — reason across all context to estimate macros."""
+    # """Sonnet — reason across all context to estimate macros."""
+    """Haiku — estimate macros from all context."""
 
     # Format Q&A for the prompt
     qa_text = ""
@@ -131,8 +162,9 @@ def estimate_macros(identified: dict, questions: list, answers: dict) -> dict:
         answer = answers.get(q["id"], "not answered")
         qa_text += f"Q: {q['question']}\nA: {answer}\n\n"
 
-    response = sonnet.messages.create(
-        model="claude-sonnet-4-5-20250514",
+    response = haiku.messages.create(
+        # model="claude-sonnet-4-20250514", // can't use sonnet
+        model="claude-haiku-4-5-20251001",
         max_tokens=800,
         messages=[{
             "role": "user",

@@ -249,20 +249,25 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
     if (!estimate || !foodScan) return
     setSavingEstimate(true)
     try {
-      const name = foodScan.description
-        || foodScan.identified.foods.map(f => f.name).join(', ')
+      // Save and log each item individually
+      for (const item of estimate.items) {
+        const foodItem = await foodPhotoApi.save(item.name, {
+          calories:  item.calories,
+          protein_g: item.protein_g,
+          carbs_g:   item.carbs_g,
+          fat_g:     item.fat_g,
+        })
 
-      const item = await foodPhotoApi.save(name, estimate.totals)
-      setSavedFoodItem(item)
+        await diaryApi.addEntry({
+          date:         new Date().toISOString().split('T')[0],
+          meal_slot:    mealSlot,
+          item_type:    'food',
+          food_item_id: foodItem.id,
+          recipe_id:    null,
+          servings:     1,
+        })
+      }
 
-      await diaryApi.addEntry({
-        date: new Date().toISOString().split('T')[0],
-        meal_slot: mealSlot,
-        item_type: 'food',
-        food_item_id: item.id,
-        recipe_id: null,
-        servings: 1,
-      })
       setLogged(true)
     } catch (e: any) {
       setError(e.message || 'Failed to log')
@@ -709,7 +714,7 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
                 <CheckCircle size={24} className="text-emerald-600 mx-auto mb-2" />
                 <p className="font-medium text-emerald-800">Logged to {mealSlot}!</p>
                 <p className="text-xs text-emerald-600 mt-0.5">
-                  {estimate.totals.calories} kcal added to today's diary
+                  {estimate.items.length} item{estimate.items.length !== 1 ? 's' : ''} added to {mealSlot} · {estimate.totals.calories} kcal total
                 </p>
               </div>
               <div className="flex gap-2">
