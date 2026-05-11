@@ -4,7 +4,6 @@ import { foodsApi, recipesApi, foodPhotoApi, diaryApi } from '../lib/api'
 import { Pencil, Camera, Upload, Loader2, CheckCircle, ChevronRight } from 'lucide-react'
 import EditFoodModal from '../components/EditFoodModal'
 import EditRecipeModal from '../components/EditRecipeModal'
-import type { FoodItem } from '../lib/api'
 
 type Mode = 'label' | 'recipe' | 'url' | 'food'
 type State = 'idle' | 'preview' | 'scanning' | 'done' | 'error'
@@ -150,7 +149,6 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
   const [estimate, setEstimate]     = useState<FoodEstimateResult | null>(null)
   const [estimating, setEstimating] = useState(false)
   const [foodDescription, setFoodDescription] = useState('')
-  const [savedFoodItem, setSavedFoodItem] = useState<FoodItem | null>(null)
   const [savingEstimate, setSavingEstimate] = useState(false)
   const [mealSlot, setMealSlot] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('lunch')
   const [logged, setLogged] = useState(false)
@@ -287,7 +285,6 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
     setEstimate(null)
     setFoodDescription('')
     setLogged(false)
-    setSavedFoodItem(null)
     compressedFileRef.current = null
     if (fileRef.current) fileRef.current.value = ''
   }

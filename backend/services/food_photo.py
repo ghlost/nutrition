@@ -108,15 +108,13 @@ Rules:
 # ── Step 2: Context — generate follow-up questions ───────────────────────────
 
 def generate_questions(identified: dict) -> list[dict]:
-    """Haiku text — generate targeted clarifying questions."""
-
     response = haiku.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=400,
         messages=[{
             "role": "user",
             "content": f"""Based on this food analysis, generate 2-3 follow-up questions
-to improve calorie estimation accuracy. Focus on the biggest unknowns.
+to improve calorie estimation accuracy.
 
 Food analysis: {json.dumps(identified)}
 
@@ -133,15 +131,26 @@ Return ONLY valid JSON, no markdown:
   ]
 }}
 
-Question types:
-- "single": pick one option from options list
-- "multiple": pick multiple from options list
-- "number": user types a number
-- "boolean": yes/no
+STRICT RULES — follow these exactly:
+- NEVER ask for weight in grams, ounces, or pounds
+- NEVER ask "how many grams" or "what was the weight"
+- NEVER ask for precise measurements the user would need a scale for
+- For portion size: use visual anchors (deck of cards, fist, palm, plate coverage)
+- For protein pieces: ask about size category (small/medium/large) not weight
+- For multiple pieces: the photo likely shows count — only ask if truly unclear
+- Prefer "single" type questions with intuitive option labels
+- Focus on: cooking method, added fats/sauces, size relative to common objects, restaurant vs homemade
+- Max 3 questions, only ask what genuinely affects the estimate
 
-Focus on: portion size, cooking method if unclear,
-added sauces/dressings, restaurant vs homemade, protein weight.
-Max 3 questions. Only ask what's genuinely unclear from the photo."""
+Good question examples:
+- "How large was each chicken wing?" → ["Small bar-style", "Medium", "Large restaurant-style"]
+- "How much of the plate did the rice fill?" → ["About a quarter", "About a third", "About half", "More than half"]
+- "Any oil, butter, or sauce added?" → ["None", "Light drizzle", "Moderate amount", "Heavily sauced"]
+
+Bad questions to avoid:
+- "How many grams of chicken?" ← never ask this
+- "What was the portion weight?" ← never ask this
+- "How many ounces?" ← never ask this"""
         }]
     )
 
