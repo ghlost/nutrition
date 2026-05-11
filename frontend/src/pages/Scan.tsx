@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react'
-import { foodsApi, recipesApi } from '../lib/api'
+import type { FoodScanStep1, FoodEstimateResult, ScanQuestion } from '../lib/api'
+import { foodsApi, recipesApi, foodPhotoApi, diaryApi } from '../lib/api'
 import { Pencil, Camera, Upload, Loader2, CheckCircle, ChevronRight } from 'lucide-react'
 import EditFoodModal from '../components/EditFoodModal'
 import EditRecipeModal from '../components/EditRecipeModal'
+import type { FoodItem } from '../lib/api'
 
-type Mode = 'label' | 'recipe' | 'url'
+type Mode = 'label' | 'recipe' | 'url' | 'food'
 type State = 'idle' | 'preview' | 'scanning' | 'done' | 'error'
 
 async function compressImage(file: File, maxWidth = 1200, quality = 0.82): Promise<File> {
@@ -49,6 +51,90 @@ async function compressImage(file: File, maxWidth = 1200, quality = 0.82): Promi
   })
 }
 
+function QuestionCard({
+  question,
+  value,
+  onChange
+}: {
+  question: ScanQuestion
+  value: string | string[] | undefined
+  onChange: (val: string | string[]) => void
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <p className="text-sm font-medium text-gray-800 mb-3">{question.question}</p>
+      <p className="text-xs text-gray-400 mb-2">{question.purpose}</p>
+
+      {question.type === 'single' && question.options && (
+        <div className="space-y-2">
+          {question.options.map(opt => (
+            <button
+              key={opt}
+              onClick={() => onChange(opt)}
+              className={`w-full text-left px-3 py-2.5 rounded-xl border text-sm transition-colors
+                ${value === opt
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-800 font-medium'
+                  : 'border-gray-200 text-gray-700 hover:border-gray-300'}`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {question.type === 'multiple' && question.options && (
+        <div className="space-y-2">
+          {question.options.map(opt => {
+            const selected = Array.isArray(value) && value.includes(opt)
+            return (
+              <button
+                key={opt}
+                onClick={() => {
+                  const current = Array.isArray(value) ? value : []
+                  onChange(selected ? current.filter(v => v !== opt) : [...current, opt])
+                }}
+                className={`w-full text-left px-3 py-2.5 rounded-xl border text-sm transition-colors
+                  ${selected
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-800 font-medium'
+                    : 'border-gray-200 text-gray-700 hover:border-gray-300'}`}
+              >
+                {opt}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {question.type === 'number' && (
+        <input
+          type="number"
+          value={typeof value === 'string' ? value : ''}
+          onChange={e => onChange(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-400"
+          placeholder="Enter a number..."
+        />
+      )}
+
+      {question.type === 'boolean' && (
+        <div className="flex gap-2">
+          {['Yes', 'No'].map(opt => (
+            <button
+              key={opt}
+              onClick={() => onChange(opt)}
+              className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-colors
+                ${value === opt
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ScanPage({ onScanned }: { onScanned: () => void }) {
   const [mode, setMode] = useState<Mode>('label')
   const [state, setState] = useState<State>('idle')
@@ -59,6 +145,15 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
   const compressedFileRef = useRef<File | null>(null)
   const [url, setUrl] = useState('')
   const [editing, setEditing] = useState(false)
+  const [foodScan, setFoodScan]     = useState<FoodScanStep1 | null>(null)
+  const [answers, setAnswers]       = useState<Record<string, string | string[]>>({})
+  const [estimate, setEstimate]     = useState<FoodEstimateResult | null>(null)
+  const [estimating, setEstimating] = useState(false)
+  const [foodDescription, setFoodDescription] = useState('')
+  const [savedFoodItem, setSavedFoodItem] = useState<FoodItem | null>(null)
+  const [savingEstimate, setSavingEstimate] = useState(false)
+  const [mealSlot, setMealSlot] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('lunch')
+  const [logged, setLogged] = useState(false)
 
   async function scanUrl() {
     if (!url.trim()) return
@@ -114,14 +209,65 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
     setState('scanning')
     setError(null)
     try {
-      const res = mode === 'label'
-        ? await foodsApi.scan(file)
-        : await recipesApi.scan(file)
-      setResult(res)
-      setState('done')
+      if (mode === 'label') {
+        const res = await foodsApi.scan(file)
+        setResult(res)
+        setState('done')
+      } else if (mode === 'recipe') {
+        const res = await recipesApi.scan(file)
+        setResult(res)
+        setState('done')
+      } else if (mode === 'food') {
+        const res = await foodPhotoApi.scan(file, foodDescription.trim() || undefined)
+        setFoodScan(res)
+        setState('done')
+      }
     } catch (e: any) {
       setError(e.message || 'Scan failed')
       setState('error')
+    }
+  }
+
+  async function submitAnswers() {
+    if (!foodScan) return
+    setEstimating(true)
+    try {
+      const res = await foodPhotoApi.estimate(
+        foodScan.identified,
+        foodScan.questions,
+        answers
+      )
+      setEstimate(res)
+    } catch (e: any) {
+      setError(e.message || 'Estimation failed')
+    } finally {
+      setEstimating(false)
+    }
+  }
+
+  async function saveAndLog() {
+    if (!estimate || !foodScan) return
+    setSavingEstimate(true)
+    try {
+      const name = foodScan.description
+        || foodScan.identified.foods.map(f => f.name).join(', ')
+
+      const item = await foodPhotoApi.save(name, estimate.totals)
+      setSavedFoodItem(item)
+
+      await diaryApi.addEntry({
+        date: new Date().toISOString().split('T')[0],
+        meal_slot: mealSlot,
+        item_type: 'food',
+        food_item_id: item.id,
+        recipe_id: null,
+        servings: 1,
+      })
+      setLogged(true)
+    } catch (e: any) {
+      setError(e.message || 'Failed to log')
+    } finally {
+      setSavingEstimate(false)
     }
   }
 
@@ -131,6 +277,12 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
     setResult(null)
     setError(null)
     setEditing(false)
+    setFoodScan(null)
+    setAnswers({})
+    setEstimate(null)
+    setFoodDescription('')
+    setLogged(false)
+    setSavedFoodItem(null)
     compressedFileRef.current = null
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -144,7 +296,8 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
         {([
           { id: 'label', label: '🏷️ Nutrition Label' },
           { id: 'recipe', label: '📋 Recipe Photo' },
-          { id: 'url', label: '🔗 Recipe URL' },
+          { id: 'food', label: '📸 Food Photo' },
+          // { id: 'url', label: '🔗 Recipe URL' },
         ] as { id: Mode; label: string }[]).map(m => (
           <button
             key={m.id}
@@ -158,7 +311,7 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
       </div>
 
       {/* Upload area */}
-      {(mode === 'label' || mode === 'recipe') && state === 'idle' && (
+      {(mode === 'label' || mode === 'recipe' || mode === 'food') && state === 'idle' && (
         <div
           onDrop={onDrop}
           onDragOver={e => e.preventDefault()}
@@ -346,6 +499,235 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
               Go to Diary <ChevronRight size={16} />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* food photo and not scanned or scanning */}
+      {mode === 'food' && state !== 'done' && state !== 'scanning' && !estimate && (
+        <div className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
+          <span className="text-gray-400 text-sm shrink-0">📝</span>
+          <input
+            type="text"
+            value={foodDescription}
+            onChange={e => setFoodDescription(e.target.value)}
+            placeholder='Optional: "grilled chicken wings with hot sauce"'
+            className="flex-1 text-sm outline-none text-gray-700 placeholder-gray-400 bg-transparent"
+          />
+        </div>
+      )}
+
+      {/* Food scan — questions */}
+      {mode === 'food' && state === 'done' && foodScan && !estimate && (
+        <div className="space-y-4">
+          {/* Identified foods */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-4">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              Identified foods
+            </p>
+            <div className="space-y-2">
+              {foodScan.identified.foods.map((food, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{food.name}</p>
+                    <p className="text-xs text-gray-400">
+                      {food.preparation} · {food.estimated_portion}
+                    </p>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+                    ${food.confidence === 'high'   ? 'bg-emerald-50 text-emerald-700' :
+                      food.confidence === 'medium' ? 'bg-yellow-50 text-yellow-700' :
+                                                    'bg-red-50 text-red-600'}`}>
+                    {food.confidence}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Follow-up questions */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-gray-700">
+              A few questions to improve accuracy:
+            </p>
+            {foodScan.questions.map(q => (
+              <QuestionCard
+                key={q.id}
+                question={q}
+                value={answers[q.id]}
+                onChange={val => setAnswers(prev => ({ ...prev, [q.id]: val }))}
+              />
+            ))}
+          </div>
+
+          <button
+            onClick={submitAnswers}
+            disabled={estimating}
+            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-2 transition-colors"
+          >
+            {estimating
+              ? <><Loader2 size={18} className="animate-spin" /> Estimating...</>
+              : 'Get Calorie Estimate'
+            }
+          </button>
+
+          <button onClick={reset} className="w-full py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500">
+            Retake photo
+          </button>
+        </div>
+      )}
+
+      {/* Food scan — estimate result */}
+      {mode === 'food' && estimate && (
+        <div className="space-y-4">
+          {/* Confidence banner */}
+          <div className={`rounded-2xl p-4 flex items-start gap-3
+            ${estimate.confidence === 'high'   ? 'bg-emerald-50 border border-emerald-200' :
+              estimate.confidence === 'medium' ? 'bg-yellow-50 border border-yellow-200' :
+                                                'bg-orange-50 border border-orange-200'}`}>
+            <div className="flex-1">
+              <p className={`text-sm font-semibold
+                ${estimate.confidence === 'high'   ? 'text-emerald-800' :
+                  estimate.confidence === 'medium' ? 'text-yellow-800' :
+                                                    'text-orange-800'}`}>
+                {estimate.confidence === 'high' ? '✓ High confidence estimate' :
+                estimate.confidence === 'medium' ? '~ Medium confidence estimate' :
+                '⚠ Low confidence estimate'}
+              </p>
+              <p className={`text-xs mt-0.5
+                ${estimate.confidence === 'high'   ? 'text-emerald-700' :
+                  estimate.confidence === 'medium' ? 'text-yellow-700' :
+                                                    'text-orange-700'}`}>
+                {estimate.confidence_reason}
+              </p>
+            </div>
+          </div>
+
+          {/* Calorie range */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 text-center">
+            <p className="text-xs text-gray-500 mb-1">Estimated calories</p>
+            <p className="text-4xl font-bold text-orange-500">
+              {estimate.totals.calories}
+              <span className="text-lg font-normal text-gray-400 ml-1">kcal</span>
+            </p>
+            <p className="text-sm text-gray-400 mt-1">
+              Range: {estimate.calorie_range.low}–{estimate.calorie_range.high} kcal
+            </p>
+
+            {/* Macro breakdown */}
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              {[
+                { label: 'Protein', value: estimate.totals.protein_g, unit: 'g', color: 'text-blue-500', bg: 'bg-blue-50' },
+                { label: 'Carbs',   value: estimate.totals.carbs_g,   unit: 'g', color: 'text-yellow-600', bg: 'bg-yellow-50' },
+                { label: 'Fat',     value: estimate.totals.fat_g,     unit: 'g', color: 'text-purple-500', bg: 'bg-purple-50' },
+              ].map(({ label, value, unit, color, bg }) => (
+                <div key={label} className={`${bg} rounded-xl p-2.5`}>
+                  <p className={`text-base font-bold ${color}`}>{value}{unit}</p>
+                  <p className="text-xs text-gray-500">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Per item breakdown */}
+          {estimate.items.length > 1 && (
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-4 pt-3 pb-2">
+                Breakdown
+              </p>
+              {estimate.items.map((item, i) => (
+                <div key={i} className={`px-4 py-2.5 flex items-center justify-between
+                  ${i < estimate.items.length - 1 ? 'border-b border-gray-50' : ''}`}>
+                  <div>
+                    <p className="text-sm text-gray-800">{item.name}</p>
+                    <p className="text-xs text-gray-400">{item.portion_used}</p>
+                  </div>
+                  <p className="text-sm font-medium text-gray-700">{item.calories} kcal</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Assumptions */}
+          {estimate.assumptions.length > 0 && (
+            <div className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-gray-500 mb-1.5">Assumptions made</p>
+              <ul className="space-y-1">
+                {estimate.assumptions.map((a, i) => (
+                  <li key={i} className="text-xs text-gray-500 flex gap-1.5">
+                    <span className="text-gray-400 shrink-0">·</span>{a}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {!logged ? (
+            <div className="space-y-3">
+              {/* Meal slot picker */}
+              <div className="bg-white rounded-xl border border-gray-200 p-3">
+                <p className="text-xs text-gray-500 mb-2">Log to which meal?</p>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map(slot => (
+                    <button
+                      key={slot}
+                      onClick={() => setMealSlot(slot)}
+                      className={`py-2 rounded-xl text-xs font-medium capitalize transition-colors border
+                        ${mealSlot === slot
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+                    >
+                      {slot === 'breakfast' ? '🌅' :
+                      slot === 'lunch'     ? '☀️' :
+                      slot === 'dinner'    ? '🌙' : '🍎'} {slot}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600"
+                >
+                  Discard
+                </button>
+                <button
+                  onClick={saveAndLog}
+                  disabled={savingEstimate}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  {savingEstimate
+                    ? <><Loader2 size={16} className="animate-spin" /> Logging...</>
+                    : <><CheckCircle size={16} /> Log to Diary</>
+                  }
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                <CheckCircle size={24} className="text-emerald-600 mx-auto mb-2" />
+                <p className="font-medium text-emerald-800">Logged to {mealSlot}!</p>
+                <p className="text-xs text-emerald-600 mt-0.5">
+                  {estimate.totals.calories} kcal added to today's diary
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600"
+                >
+                  Scan Another
+                </button>
+                <button
+                  onClick={onScanned}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium flex items-center justify-center gap-1 transition-colors"
+                >
+                  View Diary <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

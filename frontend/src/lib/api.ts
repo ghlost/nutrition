@@ -113,6 +113,54 @@ export interface WeekSummary {
   averages: { calories: number; protein_g: number; carbs_g: number; fat_g: number }
 }
 
+export interface FoodIdentified {
+  foods: {
+    name: string
+    preparation: string
+    estimated_portion: string
+    confidence: 'high' | 'medium' | 'low'
+  }[]
+  meal_type: string
+  visible_plate_size: string
+  complexity: string
+  notes: string
+}
+
+export interface ScanQuestion {
+  id: string
+  question: string
+  type: 'single' | 'multiple' | 'number' | 'boolean'
+  options: string[] | null
+  purpose: string
+}
+
+export interface FoodScanStep1 {
+  identified:  FoodIdentified
+  questions:   ScanQuestion[]
+  description: string | null
+}
+
+export interface FoodEstimateItem {
+  name: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  portion_used: string
+}
+
+export interface FoodEstimateResult {
+  items:             FoodEstimateItem[]
+  totals:            { calories: number; protein_g: number; carbs_g: number; fat_g: number }
+  calorie_range:     { low: number; high: number }
+  confidence:        'high' | 'medium' | 'low'
+  confidence_reason: string
+  assumptions:       string[]
+  critic_issues:     string[]
+  approved:          boolean
+}
+
+
 // ── Foods ────────────────────────────────────────────────────────────────────
 
 export const foodsApi = {
@@ -129,6 +177,33 @@ export const foodsApi = {
     form.append('file', file)
     return request<FoodItem>('/foods/scan', { method: 'POST', body: form })
   }
+}
+
+export const foodPhotoApi = {
+  scan: (file: File, description?: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    if (description) form.append('description', description)
+    return request<FoodScanStep1>('/food-photo/scan', { method: 'POST', body: form })
+  },
+  estimate: (identified: FoodIdentified, questions: ScanQuestion[], answers: Record<string, string | string[]>) =>
+    request<FoodEstimateResult>('/food-photo/estimate', {
+      method: 'POST',
+      body: JSON.stringify({ identified, questions, answers }),
+      headers: { 'Content-Type': 'application/json' }
+    }),
+  save: (name: string, totals: { calories: number; protein_g: number; carbs_g: number; fat_g: number }) =>
+    request<FoodItem>('/food-photo/save', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        calories:  totals.calories,
+        protein_g: totals.protein_g,
+        carbs_g:   totals.carbs_g,
+        fat_g:     totals.fat_g,
+      }),
+      headers: { 'Content-Type': 'application/json' }
+    })
 }
 
 // ── Recipes ──────────────────────────────────────────────────────────────────

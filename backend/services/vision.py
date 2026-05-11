@@ -53,19 +53,19 @@ def extract_nutrition_label(image_bytes: bytes) -> dict:
 Return ONLY valid JSON, no markdown, no explanation.
 Use this exact schema:
 {
-  "name": string,
-  "brand": string or null,
-  "serving_size": string,
-  "calories": number,
-  "protein_g": number,
-  "carbs_g": number,
-  "fat_g": number,
-  "fiber_g": number or null,
-  "sugar_g": number or null,
-  "sodium_mg": number or null,
-  "saturated_fat_g": number or null,
-  "trans_fat_g": number or null,
-  "cholesterol_mg": number or null
+"name": string,
+"brand": string or null,
+"serving_size": string,
+"calories": number,
+"protein_g": number,
+"carbs_g": number,
+"fat_g": number,
+"fiber_g": number or null,
+"sugar_g": number or null,
+"sodium_mg": number or null,
+"saturated_fat_g": number or null,
+"trans_fat_g": number or null,
+"cholesterol_mg": number or null
 }
 If a value is not visible on the label, use null."""
                 }
