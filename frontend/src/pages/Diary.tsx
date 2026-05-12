@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { diaryApi, foodsApi, recipesApi, weightApi } from '../lib/api'
-import type { DiarySummary, FoodItem, Recipe, DiaryEntry } from '../lib/api'
+import { diaryApi, foodsApi, recipesApi, myRecipesApi, weightApi } from '../lib/api'
+import type { DiarySummary, FoodItem, Recipe, DiaryEntry, RecipeWithProfile, WeightEntry } from '../lib/api'
 import { Scale, Plus, Trash2, ChevronLeft, ChevronRight, X, Search } from 'lucide-react'
-import type { WeightEntry } from '../lib/api'
 
 type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack'
 const SLOTS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack']
@@ -46,165 +45,218 @@ function MacroRing({ label, value, goal, color, showUnit }: {
 }
 
 function AddFoodModal({ slot, onAdd, onClose }: {
-  slot: MealSlot
-  onAdd: (item: FoodItem | Recipe, type: 'food' | 'recipe', servings: number) => Promise<void>
-  onClose: () => void
-}) {
-  const [tab, setTab] = useState<'food' | 'recipe'>('food')
-  const [foods, setFoods] = useState<FoodItem[]>([])
-  const [recipes, setRecipes] = useState<Recipe[]>([])
-  const [query, setQuery] = useState('')
-  const [servings, setServings] = useState<Record<string, number>>({})
-  const [adding, setAdding] = useState<string | null>(null)
-  
+    slot: MealSlot
+    onAdd: (item: FoodItem | Recipe, type: 'food' | 'recipe', servings: number) => Promise<void>
+    onClose: () => void
+  }) {
+    const [tab, setTab]               = useState<'food' | 'recipe'>('food')
+    const [query, setQuery]           = useState('')
+    const [foods, setFoods]           = useState<FoodItem[]>([])
+    const [recipes, setRecipes]       = useState<RecipeWithProfile[]>([])
+    const [searching, setSearching]   = useState(false)
+    const [servings, setServings]     = useState<Record<string, number>>({})
+    const [adding, setAdding]         = useState<string | null>(null)
 
-  useEffect(() => {
-    foodsApi.list().then(setFoods).catch(() => {})
-    recipesApi.list().then(setRecipes).catch(() => {})
-  }, [])
+    // Load all on mount
+    useEffect(() => {
+      foodsApi.list().then(d => setFoods(d ?? [])).catch(() => {})
+      myRecipesApi.list().then(d => setRecipes(d ?? [])).catch(() => {})
+    }, [])
 
-  const filteredFoods = foods.filter(f =>
-    f.name.toLowerCase().includes(query.toLowerCase()) ||
-    f.brand?.toLowerCase().includes(query.toLowerCase())
-  )
-  const filteredRecipes = recipes.filter(r =>
-    r.name.toLowerCase().includes(query.toLowerCase())
-  )
+    // Live search
+    useEffect(() => {
+      if (!query.trim()) {
+        // Reset to full list
+        foodsApi.list().then(d => setFoods(d ?? [])).catch(() => {})
+        myRecipesApi.list().then(d => setRecipes(d ?? [])).catch(() => {})
+        return
+      }
 
-  async function handleAdd(item: FoodItem | Recipe, type: 'food' | 'recipe') {
-    setAdding(item.id)
-    await onAdd(item, type, servings[item.id] ?? 1)
-    setAdding(null)
-  }
+      const timer = setTimeout(async () => {
+        setSearching(true)
+        try {
+          if (tab === 'food') {
+            const results = await foodsApi.search(query)
+            setFoods(results ?? [])
+          } else {
+            // Semantic search for recipes
+            const results = await recipesApi.search(query)
+            setRecipes((results ?? []) as RecipeWithProfile[])
+          }
+        } catch {
+          // keep current list on error
+        } finally {
+          setSearching(false)
+        }
+      }, 400) // debounce 400ms
 
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-      <div className="bg-white w-full max-w-2xl rounded-t-2xl sm:rounded-2xl max-h-[80vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-900 capitalize">
-            Add to {SLOT_EMOJI[slot]} {slot}
-          </h3>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
-            <X size={20} className="text-gray-500" />
-          </button>
-        </div>
+      return () => clearTimeout(timer)
+    }, [query, tab])
 
-        {/* Tabs */}
-        <div className="flex bg-gray-50 mx-4 mt-3 rounded-xl p-1">
-          {(['food', 'recipe'] as const).map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors capitalize
-                ${tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
-            >
-              {t === 'food' ? '🏷️ Foods' : '📋 Recipes'}
+    async function handleAdd(item: FoodItem | Recipe, type: 'food' | 'recipe') {
+      setAdding(item.id)
+      await onAdd(item, type, servings[item.id] ?? 1)
+      setAdding(null)
+    }
+
+    const displayName = (item: FoodItem | Recipe, type: 'food' | 'recipe') => {
+      if (type === 'recipe') {
+        const r = item as RecipeWithProfile
+        return r.name
+      }
+      return item.name
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+        <div className="bg-white w-full max-w-2xl rounded-t-2xl sm:rounded-2xl max-h-[80vh] flex flex-col">
+
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900 capitalize">
+              Add to {SLOT_EMOJI[slot]} {slot}
+            </h3>
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
+              <X size={20} className="text-gray-500" />
             </button>
-          ))}
-        </div>
+          </div>
 
-        {/* Search */}
-        <div className="px-4 pt-3">
-          <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
-            <Search size={16} className="text-gray-400" />
-            <input
-              autoFocus
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder={`Search ${tab}s...`}
-              className="flex-1 bg-transparent text-sm outline-none text-gray-700 placeholder-gray-400"
-            />
+          {/* Tabs */}
+          <div className="flex bg-gray-50 mx-4 mt-3 rounded-xl p-1 shrink-0">
+            {(['food', 'recipe'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => { setTab(t); setQuery('') }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors capitalize
+                  ${tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+              >
+                {t === 'food' ? '🏷️ Foods' : '📋 Recipes'}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="px-4 pt-3 shrink-0">
+            <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
+              <Search size={16} className="text-gray-400 shrink-0" />
+              <input
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder={tab === 'food'
+                  ? 'Search all foods by name or brand...'
+                  : 'Search recipes semantically...'
+                }
+                className="flex-1 bg-transparent text-sm outline-none text-gray-700 placeholder-gray-400"
+              />
+              {searching && (
+                <div className="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />
+              )}
+            </div>
+            {tab === 'recipe' && query && (
+              <p className="text-xs text-gray-400 mt-1 px-1">
+                Semantic search — try "high protein quick dinner" or "vegetarian pasta"
+              </p>
+            )}
+          </div>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+
+            {/* Foods tab */}
+            {tab === 'food' && (
+              foods.length === 0
+                ? <p className="text-center text-gray-400 text-sm py-8">
+                    {query ? `No foods matching "${query}"` : 'No foods scanned yet. Use the Scan tab to add food items.'}
+                  </p>
+                : foods.map(food => (
+                  <div key={food.id} className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 text-sm truncate">{food.name}</p>
+                      {food.brand && <p className="text-xs text-gray-400">{food.brand}</p>}
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {food.calories} kcal · {food.protein_g}g protein · {food.serving_size}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="number"
+                        min="0.25"
+                        step="0.25"
+                        value={servings[food.id] ?? 1}
+                        onChange={e => setServings(s => ({ ...s, [food.id]: Number(e.target.value) }))}
+                        className="w-14 text-center text-sm border border-gray-200 rounded-lg py-1 bg-white"
+                      />
+                      <button
+                        onClick={() => handleAdd(food, 'food')}
+                        disabled={adding === food.id}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg p-1.5 transition-colors"
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+            )}
+
+            {/* Recipes tab */}
+            {tab === 'recipe' && (
+              recipes.length === 0
+                ? <p className="text-center text-gray-400 text-sm py-8">
+                    {query ? `No recipes matching "${query}"` : 'No recipes yet. Use the Scan tab to add recipes.'}
+                  </p>
+                : recipes.map(recipe => (
+                  <div key={recipe.id} className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-gray-900 text-sm truncate">{recipe.name}</p>
+                        {(recipe as RecipeWithProfile).has_user_profile && (
+                          <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full shrink-0">
+                            my values
+                          </span>
+                        )}
+                      </div>
+                      {recipe.calories_per_serving && (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {recipe.calories_per_serving} kcal / serving
+                          {recipe.protein_per_serving_g && ` · ${recipe.protein_per_serving_g}g protein`}
+                        </p>
+                      )}
+                      {recipe.tags?.length > 0 && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {recipe.tags.slice(0, 3).map(t => (
+                            <span key={t} className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <input
+                        type="number"
+                        min="0.25"
+                        step="0.25"
+                        value={servings[recipe.id] ?? 1}
+                        onChange={e => setServings(s => ({ ...s, [recipe.id]: Number(e.target.value) }))}
+                        className="w-14 text-center text-sm border border-gray-200 rounded-lg py-1 bg-white"
+                      />
+                      <button
+                        onClick={() => handleAdd(recipe, 'recipe')}
+                        disabled={adding === recipe.id}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg p-1.5 transition-colors"
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+            )}
           </div>
         </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {tab === 'food' && (
-            filteredFoods.length === 0
-              ? <p className="text-center text-gray-400 text-sm py-8">
-                  {foods.length === 0 ? 'No foods scanned yet. Use the Scan tab to add food items.' : 'No results'}
-                </p>
-              : filteredFoods.map(food => (
-                <div key={food.id} className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate">{food.name}</p>
-                    {food.brand && <p className="text-xs text-gray-400">{food.brand}</p>}
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {food.calories} kcal · {food.protein_g}g protein · {food.serving_size}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <input
-                      type="number"
-                      min="0.25"
-                      step="0.25"
-                      value={servings[food.id] ?? 1}
-                      onChange={e => setServings(s => ({ ...s, [food.id]: Number(e.target.value) }))}
-                      className="w-14 text-center text-sm border border-gray-200 rounded-lg py-1 bg-white"
-                    />
-                    <button
-                      onClick={() => handleAdd(food, 'food')}
-                      disabled={adding === food.id}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg p-1.5 transition-colors"
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))
-          )}
-
-          {tab === 'recipe' && (
-            filteredRecipes.length === 0
-              ? <p className="text-center text-gray-400 text-sm py-8">
-                  {recipes.length === 0 ? 'No recipes scanned yet. Use the Scan tab to add recipes.' : 'No results'}
-                </p>
-              : filteredRecipes.map(recipe => (
-                <div key={recipe.id} className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 text-sm truncate">{recipe.name}</p>
-                    {recipe.calories_per_serving && (
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {recipe.calories_per_serving} kcal / serving
-                        {recipe.protein_per_serving_g && ` · ${recipe.protein_per_serving_g}g protein`}
-                      </p>
-                    )}
-                    {recipe.tags?.length > 0 && (
-                      <div className="flex gap-1 mt-1 flex-wrap">
-                        {recipe.tags.slice(0, 3).map(t => (
-                          <span key={t} className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full">
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <input
-                      type="number"
-                      min="0.25"
-                      step="0.25"
-                      value={servings[recipe.id] ?? 1}
-                      onChange={e => setServings(s => ({ ...s, [recipe.id]: Number(e.target.value) }))}
-                      className="w-14 text-center text-sm border border-gray-200 rounded-lg py-1 bg-white"
-                    />
-                    <button
-                      onClick={() => handleAdd(recipe, 'recipe')}
-                      disabled={adding === recipe.id}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg p-1.5 transition-colors"
-                    >
-                      <Plus size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))
-          )}
-        </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
 
 export default function DiaryPage() {
   const [date, setDate] = useState(toDateString(new Date()))
@@ -236,10 +288,11 @@ export default function DiaryPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Weight load — handle null/empty
   useEffect(() => {
     weightApi.list()
-      .then(all => setWeights(all.filter(w => w.date === date)))
-      .catch(() => {})
+      .then(all => setWeights((all ?? []).filter(w => w.date === date)))
+      .catch(() => setWeights([]))
   }, [date])
 
   function shiftDate(days: number) {
@@ -316,7 +369,7 @@ export default function DiaryPage() {
   )
 
   const totals = summary?.totals
-  const goals = summary?.goals
+  const goals  = summary?.goals ?? null
 
   return (
     <div className="p-4 space-y-4">

@@ -28,6 +28,22 @@ router = APIRouter()
 def list_foods(session: Session = Depends(get_session)):
     return session.exec(select(FoodItem).order_by(FoodItem.created_at.desc())).all()
 
+@router.get("/search")
+def search_foods(q: str, session: Session = Depends(get_session)):
+    if not q.strip():
+        return []
+    # Simple name/brand search across all food items
+    from sqlmodel import or_
+    results = session.exec(
+        select(FoodItem).where(
+            or_(
+                FoodItem.name.ilike(f"%{q}%"),
+                FoodItem.brand.ilike(f"%{q}%")
+            )
+        ).limit(20)
+    ).all()
+    return results
+
 @router.get("/{food_id}")
 def get_food(food_id: str, session: Session = Depends(get_session)):
     item = session.get(FoodItem, food_id)

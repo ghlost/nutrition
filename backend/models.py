@@ -92,3 +92,18 @@ class User(SQLModel, table=True):
     hashed_password: str
     is_active: bool = Field(default=True)
     created_at: str = Field(default_factory=now)
+
+class UserRecipeNutrition(SQLModel, table=True):
+    id: str = Field(default_factory=new_id, primary_key=True)
+    user_id: str = Field(index=True)
+    recipe_id: str = Field(foreign_key="recipe.id", index=True)
+    # Nutrition overrides — null means use the global recipe value
+    calories_per_serving: Optional[float] = None
+    protein_per_serving_g: Optional[float] = None
+    carbs_per_serving_g: Optional[float] = None
+    fat_per_serving_g: Optional[float] = None
+    servings_override: Optional[int] = None
+    custom_name: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: str = Field(default_factory=now)
+    updated_at: str = Field(default_factory=now)

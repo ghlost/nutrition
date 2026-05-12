@@ -19,9 +19,7 @@ def get_goals(
         .where(DailyGoal.effective_date <= today)
         .order_by(DailyGoal.effective_date.desc())
     ).first()
-    if not goals:
-        raise HTTPException(404, "No goals set yet")
-    return goals
+    return goals  # returns null if none — not 404
 
 @router.post("/")
 def set_goals(

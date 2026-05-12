@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from database import get_session
 from auth import get_current_user
-from models import DiaryEntry, FoodItem, Recipe, DailyGoal, User
+from models import DiaryEntry, FoodItem, Recipe, DailyGoal, UserRecipeNutrition, User
 import datetime
 
 router = APIRouter()
@@ -13,24 +13,40 @@ def compute_nutrition(entry: DiaryEntry, session: Session) -> dict:
         food = session.get(FoodItem, entry.food_item_id)
         if food:
             return {
-                "name": food.name,
-                "brand": food.brand,
-                "calories": (food.calories or 0) * s,
+                "name":      food.name,
+                "brand":     food.brand,
+                "calories":  (food.calories or 0) * s,
                 "protein_g": (food.protein_g or 0) * s,
-                "carbs_g": (food.carbs_g or 0) * s,
-                "fat_g": (food.fat_g or 0) * s,
+                "carbs_g":   (food.carbs_g or 0) * s,
+                "fat_g":     (food.fat_g or 0) * s,
             }
+
     if entry.item_type == "recipe" and entry.recipe_id:
         recipe = session.get(Recipe, entry.recipe_id)
         if recipe:
+            # Check for user nutrition profile first
+            profile = session.exec(
+                select(UserRecipeNutrition)
+                .where(UserRecipeNutrition.recipe_id == entry.recipe_id)
+                .where(UserRecipeNutrition.user_id == entry.user_id)
+            ).first()
+
+            # Use profile values if set, fall back to global
+            calories  = (profile.calories_per_serving  if profile and profile.calories_per_serving  is not None else recipe.calories_per_serving)  or 0
+            protein   = (profile.protein_per_serving_g if profile and profile.protein_per_serving_g is not None else recipe.protein_per_serving_g) or 0
+            carbs     = (profile.carbs_per_serving_g   if profile and profile.carbs_per_serving_g   is not None else recipe.carbs_per_serving_g)   or 0
+            fat       = (profile.fat_per_serving_g     if profile and profile.fat_per_serving_g     is not None else recipe.fat_per_serving_g)     or 0
+            name      = (profile.custom_name if profile and profile.custom_name else recipe.name)
+
             return {
-                "name": recipe.name,
-                "brand": None,
-                "calories": (recipe.calories_per_serving or 0) * s,
-                "protein_g": (recipe.protein_per_serving_g or 0) * s,
-                "carbs_g": (recipe.carbs_per_serving_g or 0) * s,
-                "fat_g": (recipe.fat_per_serving_g or 0) * s,
+                "name":      name,
+                "brand":     None,
+                "calories":  calories * s,
+                "protein_g": protein * s,
+                "carbs_g":   carbs * s,
+                "fat_g":     fat * s,
             }
+
     return {"name": "Unknown", "brand": None, "calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0}
 
 @router.get("/{date}")
