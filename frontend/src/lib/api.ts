@@ -2,13 +2,84 @@ const BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api'
 
+
+// Token management
+export const auth = {
+  getToken: () => localStorage.getItem('auth_token'),
+  setToken: (token: string) => localStorage.setItem('auth_token', token),
+  getUser:  () => {
+    const u = localStorage.getItem('auth_user')
+    return u ? JSON.parse(u) : null
+  },
+  setUser:  (user: object) => localStorage.setItem('auth_user', JSON.stringify(user)),
+  clear:    () => {
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_user')
+  },
+  isLoggedIn: () => !!localStorage.getItem('auth_token'),
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, options)
+  const token = auth.getToken()
+
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      ...options?.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    }
+  })
+
+  if (res.status === 401) {
+    auth.clear()
+    window.location.href = '/login'
+    throw new Error('Session expired')
+  }
+
+  // Return null for 404s on GET requests instead of throwing
+  if (res.status === 404 && (!options?.method || options.method === 'GET')) {
+    console.log('null');
+    return null as T
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
     throw new Error(err.detail || `HTTP ${res.status}`)
   }
-  return res.json()
+
+  // Handle empty responses
+  const text = await res.text()
+  if (!text) return null as T
+  return JSON.parse(text)
+}
+
+// Auth API
+export interface AuthUser {
+  id: string
+  email: string
+  username: string
+}
+
+export interface AuthResponse {
+  access_token: string
+  token_type: string
+  user: AuthUser
+}
+
+export const authApi = {
+  register: (email: string, username: string, password: string) =>
+    request<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, username, password }),
+      headers: { 'Content-Type': 'application/json' }
+    }),
+  login: (email: string, password: string) =>
+    request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+      headers: { 'Content-Type': 'application/json' }
+    }),
+  me: () => request<AuthUser>('/auth/me'),
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -160,12 +231,32 @@ export interface FoodEstimateResult {
   approved:          boolean
 }
 
+export interface UserRecipeNutrition {
+  id: string
+  user_id: string
+  recipe_id: string
+  calories_per_serving: number | null
+  protein_per_serving_g: number | null
+  carbs_per_serving_g: number | null
+  fat_per_serving_g: number | null
+  servings_override: number | null
+  custom_name: string | null
+  notes: string | null
+}
+
+export interface RecipeWithProfile extends Recipe {
+  has_user_profile: boolean
+  user_profile_id: string | null
+  user_notes: string | null
+}
+
 
 // ── Foods ────────────────────────────────────────────────────────────────────
 
 export const foodsApi = {
-  list:   () => request<FoodItem[]>('/foods'),
+  list:   () => request<FoodItem[]>('/foods/'),
   get:    (id: string) => request<FoodItem>(`/foods/${id}`),
+  search: (q: string) => request<FoodItem[]>(`/foods/search?q=${encodeURIComponent(q)}`),
   update: (id: string, updates: Partial<FoodItem>) =>
     request<FoodItem>(`/foods/${id}`, {
       method: 'PUT',
@@ -209,7 +300,7 @@ export const foodPhotoApi = {
 // ── Recipes ──────────────────────────────────────────────────────────────────
 
 export const recipesApi = {
-  list:     () => request<Recipe[]>('/recipes'),
+  list:     () => request<Recipe[]>('/recipes/'),
   get:      (id: string) => request<Recipe>(`/recipes/${id}`),
   search:   (q: string) => request<Recipe[]>(`/recipes/search?q=${encodeURIComponent(q)}`),
   update:   (id: string, updates: Partial<Recipe>) =>
@@ -230,6 +321,21 @@ export const recipesApi = {
   })
 }
 
+export const myRecipesApi = {
+  list:   () => request<RecipeWithProfile[]>('/my-recipes/'),
+  get:    (id: string) => request<RecipeWithProfile>(`/my-recipes/${id}`),
+  saveNutrition: (recipeId: string, profile: Partial<UserRecipeNutrition>) =>
+    request<RecipeWithProfile>(`/my-recipes/${recipeId}/nutrition`, {
+      method: 'POST',
+      body: JSON.stringify(profile),
+      headers: { 'Content-Type': 'application/json' }
+    }),
+  deleteNutrition: (recipeId: string) =>
+    request<{ deleted: string }>(`/my-recipes/${recipeId}/nutrition`, {
+      method: 'DELETE'
+    })
+}
+
 // ── Diary ────────────────────────────────────────────────────────────────────
 
 export const diaryApi = {
@@ -242,9 +348,9 @@ export const diaryApi = {
 // ── Goals ────────────────────────────────────────────────────────────────────
 
 export const goalsApi = {
-  get: () => request<DailyGoal>('/goals'),
+  get: () => request<DailyGoal>('/goals/'),
   set: (goal: Omit<DailyGoal, 'id' | 'effective_date'>) =>
-    request<DailyGoal>('/goals', { method: 'POST', body: JSON.stringify(goal), headers: { 'Content-Type': 'application/json' } })
+    request<DailyGoal>('/goals/', { method: 'POST', body: JSON.stringify(goal), headers: { 'Content-Type': 'application/json' } })
 }
 
 // ── Week ────────────────────────────────────────────────────────────────────
@@ -256,9 +362,9 @@ export const summaryApi = {
 // ── Weight ────────────────────────────────────────────────────────────────────
 
 export const weightApi = {
-  list: () => request<WeightEntry[]>('/weight'),
+  list: () => request<WeightEntry[]>('/weight/'),
   log: (entry: Omit<WeightEntry, 'id' | 'created_at'>) =>
-    request<WeightEntry>('/weight', {
+    request<WeightEntry>('/weight/', {
       method: 'POST',
       body: JSON.stringify(entry),
       headers: { 'Content-Type': 'application/json' }

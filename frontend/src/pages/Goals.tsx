@@ -9,8 +9,15 @@ export default function GoalsPage() {
 
   useEffect(() => {
     goalsApi.get()
-      .then(g => setGoals({ calories: g.calories, protein_g: g.protein_g, carbs_g: g.carbs_g, fat_g: g.fat_g }))
-      .catch(() => {}) // no goals set yet — use defaults
+      .then(g => {
+        if (g) setGoals({
+          calories:  g.calories,
+          protein_g: g.protein_g,
+          carbs_g:   g.carbs_g,
+          fat_g:     g.fat_g
+        })
+      })
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
 

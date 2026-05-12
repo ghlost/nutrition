@@ -43,16 +43,18 @@ export default function ProgressPage() {
   const [logging, setLogging]         = useState(false)
 
   useEffect(() => {
+    weightApi.list()
+      .then(all => setWeights(all ?? []))
+      .catch(() => setWeights([]))
+  }, [])
+
+  useEffect(() => {
     setLoadingWeek(true)
     summaryApi.week(weekStart)
-      .then(setSummary)
+      .then(data => setSummary(data ?? null))
       .catch(() => setSummary(null))
       .finally(() => setLoadingWeek(false))
   }, [weekStart])
-
-  useEffect(() => {
-    weightApi.list().then(setWeights).catch(() => {})
-  }, [])
 
   function shiftWeek(dir: number) {
     const d = new Date(weekStart + 'T12:00:00')

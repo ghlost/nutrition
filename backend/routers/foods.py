@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlmodel import Session, select
-from database import get_session
-from models import FoodItem
-from services import extract_nutrition_label
 from pydantic import BaseModel
+from database import get_session
+from models import FoodItem, User
+from services import extract_nutrition_label
 from typing import Optional
+from auth import get_current_user
 
 class FoodItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -27,6 +28,22 @@ router = APIRouter()
 def list_foods(session: Session = Depends(get_session)):
     return session.exec(select(FoodItem).order_by(FoodItem.created_at.desc())).all()
 
+@router.get("/search")
+def search_foods(q: str, session: Session = Depends(get_session)):
+    if not q.strip():
+        return []
+    # Simple name/brand search across all food items
+    from sqlmodel import or_
+    results = session.exec(
+        select(FoodItem).where(
+            or_(
+                FoodItem.name.ilike(f"%{q}%"),
+                FoodItem.brand.ilike(f"%{q}%")
+            )
+        ).limit(20)
+    ).all()
+    return results
+
 @router.get("/{food_id}")
 def get_food(food_id: str, session: Session = Depends(get_session)):
     item = session.get(FoodItem, food_id)
@@ -37,7 +54,8 @@ def get_food(food_id: str, session: Session = Depends(get_session)):
 @router.post("/scan")
 def scan_label(
     file: UploadFile = File(...),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
 ):
     if file.content_type not in ("image/jpeg", "image/png", "image/webp", "image/heic"):
         raise HTTPException(400, "File must be an image (JPEG, PNG, WEBP, or HEIC)")
@@ -51,7 +69,7 @@ def scan_label(
     except Exception as e:
         raise HTTPException(422, f"Could not extract nutrition data: {str(e)}")
 
-    item = FoodItem(**extracted)
+    item = FoodItem(**extracted, created_by=current_user.id)
     session.add(item)
     session.commit()
     session.refresh(item)
