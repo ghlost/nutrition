@@ -99,14 +99,6 @@ function AddFoodModal({ slot, onAdd, onClose }: {
       setAdding(null)
     }
 
-    const displayName = (item: FoodItem | Recipe, type: 'food' | 'recipe') => {
-      if (type === 'recipe') {
-        const r = item as RecipeWithProfile
-        return r.name
-      }
-      return item.name
-    }
-
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
         <div className="bg-white w-full max-w-2xl rounded-t-2xl sm:rounded-2xl max-h-[80vh] flex flex-col">
