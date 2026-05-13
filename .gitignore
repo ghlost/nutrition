@@ -9,4 +9,3 @@ backend/nutrition.db
 node_modules/
 dist/
 .DS_Store
-EOF
