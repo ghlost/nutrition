@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import { diaryApi, foodsApi, recipesApi, myRecipesApi, weightApi } from '../lib/api'
-import type { DiarySummary, FoodItem, Recipe, DiaryEntry, RecipeWithProfile, WeightEntry } from '../lib/api'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { foodsApi, recipesApi, myRecipesApi, diaryApi, weightApi, usdaApi } from '../lib/api'
+import type { DiarySummary, FoodItem, Recipe, DiaryEntry, RecipeWithProfile, WeightEntry, USDAFood } from '../lib/api'
 import { Scale, Plus, Trash2, ChevronLeft, ChevronRight, X, Search } from 'lucide-react'
 
 type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack'
@@ -49,13 +49,28 @@ function AddFoodModal({ slot, onAdd, onClose }: {
     onAdd: (item: FoodItem | Recipe, type: 'food' | 'recipe', servings: number) => Promise<void>
     onClose: () => void
   }) {
-    const [tab, setTab]               = useState<'food' | 'recipe'>('food')
-    const [query, setQuery]           = useState('')
-    const [foods, setFoods]           = useState<FoodItem[]>([])
-    const [recipes, setRecipes]       = useState<RecipeWithProfile[]>([])
-    const [searching, setSearching]   = useState(false)
-    const [servings, setServings]     = useState<Record<string, number>>({})
-    const [adding, setAdding]         = useState<string | null>(null)
+    const [tab, setTab] = useState<'food' | 'recipe' | 'usda' | 'manual'>('food')
+    const [query, setQuery] = useState('')
+    const [foods, setFoods] = useState<FoodItem[]>([])
+    const [recipes, setRecipes] = useState<RecipeWithProfile[]>([])
+    const [searching, setSearching] = useState(false)
+    const [servings, setServings] = useState<Record<string, number>>({})
+    const [adding, setAdding] = useState<string | null>(null)
+    const [manual, setManual] = useState({
+      name: '',
+      calories: '',
+      protein_g: '',
+      carbs_g: '',
+      fat_g: '',
+    })
+    const [addingManual, setAddingManual] = useState(false)
+    const [manualError, setManualError]   = useState<string | null>(null)
+    const [usdaResults, setUsdaResults]   = useState<USDAFood[]>([])
+    const [usdaSearching, setUsdaSearching] = useState(false)
+    const [usdaQuery, setUsdaQuery]       = useState('')
+    const [addingUsda, setAddingUsda]     = useState<number | null>(null)
+
+    const usdaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // Load all on mount
     useEffect(() => {
@@ -99,6 +114,62 @@ function AddFoodModal({ slot, onAdd, onClose }: {
       setAdding(null)
     }
 
+    async function submitManual() {
+      const cals = parseFloat(manual.calories)
+      if (!cals || cals <= 0) { setManualError('Calories are required'); return }
+      setAddingManual(true)
+      setManualError(null)
+      try {
+        const item = await foodsApi.manual({
+          name:      manual.name.trim() || 'Manual Entry',
+          calories:  cals,
+          protein_g: parseFloat(manual.protein_g) || 0,
+          carbs_g:   parseFloat(manual.carbs_g)   || 0,
+          fat_g:     parseFloat(manual.fat_g)     || 0,
+        })
+        await onAdd(item, 'food', 1)
+        setManual({ name: '', calories: '', protein_g: '', carbs_g: '', fat_g: '' })
+      } catch (e: any) {
+        setManualError(e.message || 'Failed to add')
+      } finally {
+        setAddingManual(false)
+      }
+    }
+
+    async function searchUSDA(q: string) {
+      setUsdaQuery(q)
+      setUsdaResults([])
+
+      if (!q.trim() || q.length < 2) return
+
+      // Clear previous debounce
+      if (usdaDebounceRef.current) clearTimeout(usdaDebounceRef.current)
+
+      usdaDebounceRef.current = setTimeout(async () => {
+        setUsdaSearching(true)
+        try {
+          const results = await usdaApi.search(q)
+          setUsdaResults(results ?? [])
+        } catch {
+          setUsdaResults([])
+        } finally {
+          setUsdaSearching(false)
+        }
+      }, 300)
+    }
+
+    async function addUSDAFood(food: USDAFood) {
+      setAddingUsda(food.fdcId)
+      try {
+        const item = await usdaApi.add(food.fdcId)
+        await onAdd(item, 'food', 1)
+      } catch (e: any) {
+        console.error('Failed to add USDA food:', e)
+      } finally {
+        setAddingUsda(null)
+      }
+    }
+
     return (
       <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
         <div className="bg-white w-full max-w-2xl rounded-t-2xl sm:rounded-2xl max-h-[80vh] flex flex-col">
@@ -115,20 +186,25 @@ function AddFoodModal({ slot, onAdd, onClose }: {
 
           {/* Tabs */}
           <div className="flex bg-gray-50 mx-4 mt-3 rounded-xl p-1 shrink-0">
-            {(['food', 'recipe'] as const).map(t => (
+            {([
+              { id: 'food',   label: '🏷️ My Foods'  },
+              { id: 'recipe', label: '📋 Recipes'   },
+              { id: 'usda',   label: '🔍 Search DB' },
+              { id: 'manual', label: '✏️ Manual'    },
+            ] as const).map(t => (
               <button
-                key={t}
-                onClick={() => { setTab(t); setQuery('') }}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors capitalize
-                  ${tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+                key={t.id}
+                onClick={() => { setTab(t.id); setQuery('') }}
+                className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors
+                  ${tab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
               >
-                {t === 'food' ? '🏷️ Foods' : '📋 Recipes'}
+                {t.label}
               </button>
             ))}
           </div>
 
           {/* Search */}
-          <div className="px-4 pt-3 shrink-0">
+          {(tab === 'food' || tab === 'recipe') && (<div className="px-4 pt-3 shrink-0">
             <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
               <Search size={16} className="text-gray-400 shrink-0" />
               <input
@@ -150,7 +226,7 @@ function AddFoodModal({ slot, onAdd, onClose }: {
                 Semantic search — try "high protein quick dinner" or "vegetarian pasta"
               </p>
             )}
-          </div>
+          </div>)}
 
           {/* List */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -243,6 +319,125 @@ function AddFoodModal({ slot, onAdd, onClose }: {
                     </div>
                   </div>
                 ))
+            )}
+
+            {/* USDA search tab */}
+            {tab === 'usda' && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-200">
+                  <Search size={16} className="text-gray-400 shrink-0" />
+                  <input
+                    autoFocus
+                    value={usdaQuery}
+                    onChange={e => searchUSDA(e.target.value)}
+                    placeholder="Search 1M+ foods — chicken breast, greek yogurt..."
+                    className="flex-1 bg-transparent text-sm outline-none text-gray-700 placeholder-gray-400"
+                  />
+                  {usdaSearching && (
+                    <div className="w-3 h-3 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />
+                  )}
+                </div>
+
+                {!usdaQuery && (
+                  <div className="text-center py-8 space-y-2">
+                    <p className="text-2xl">🔍</p>
+                    <p className="text-sm font-medium text-gray-600">USDA Food Database</p>
+                    <p className="text-xs text-gray-400">
+                      Search over 1 million foods including raw ingredients, packaged foods, and restaurant items
+                    </p>
+                  </div>
+                )}
+
+                {usdaQuery && !usdaSearching && usdaResults.length === 0 && (
+                  <p className="text-center text-gray-400 text-sm py-8">
+                    No results for "{usdaQuery}"
+                  </p>
+                )}
+
+                {usdaResults.map(food => (
+                  <div key={food.fdcId} className="bg-gray-50 rounded-xl p-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 text-sm truncate">{food.name}</p>
+                      {food.brand && <p className="text-xs text-gray-400">{food.brand}</p>}
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {food.calories} kcal · {food.protein_g}g P · {food.carbs_g}g C · {food.fat_g}g F
+                      </p>
+                      <p className="text-xs text-gray-400">per {food.serving_size}</p>
+                    </div>
+                    <button
+                      onClick={() => addUSDAFood(food)}
+                      disabled={addingUsda === food.fdcId}
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg p-1.5 transition-colors shrink-0"
+                    >
+                      {addingUsda === food.fdcId
+                        ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        : <Plus size={16} />
+                      }
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Manual tab */}
+            {tab === 'manual' && (
+              <div className="space-y-3">
+                <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Label (optional)</label>
+                    <input
+                      type="text"
+                      value={manual.name}
+                      onChange={e => setManual(m => ({ ...m, name: e.target.value }))}
+                      placeholder='e.g. "Post-workout shake"'
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-400 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">
+                      Calories<span className="text-red-400 ml-0.5">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={manual.calories}
+                      onChange={e => setManual(m => ({ ...m, calories: e.target.value }))}
+                      placeholder="500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-400 bg-white"
+                    />
+                  </div>
+
+                  <p className="text-xs text-gray-400 font-medium">Macros (optional)</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ['protein_g', 'Protein (g)'],
+                      ['carbs_g',   'Carbs (g)'],
+                      ['fat_g',     'Fat (g)'],
+                    ] as const).map(([key, label]) => (
+                      <div key={key}>
+                        <label className="text-xs text-gray-500 mb-1 block">{label}</label>
+                        <input
+                          type="number"
+                          value={manual[key]}
+                          onChange={e => setManual(m => ({ ...m, [key]: e.target.value }))}
+                          placeholder="0"
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-emerald-400 bg-white"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {manualError && <p className="text-sm text-red-500">{manualError}</p>}
+
+                  <button
+                    onClick={submitManual}
+                    disabled={addingManual || !manual.calories}
+                    className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+                  >
+                    {addingManual ? 'Adding...' : 'Add to Diary'}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>

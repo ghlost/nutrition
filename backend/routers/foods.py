@@ -22,6 +22,13 @@ class FoodItemUpdate(BaseModel):
     trans_fat_g: Optional[float] = None
     cholesterol_mg: Optional[float] = None
 
+class ManualEntryRequest(BaseModel):
+    name: str = "Manual Entry"
+    calories: float
+    protein_g: float = 0
+    carbs_g: float = 0
+    fat_g: float = 0
+
 router = APIRouter()
 
 @router.get("/")
@@ -82,6 +89,27 @@ def update_food(food_id: str, updates: FoodItemUpdate, session: Session = Depend
         raise HTTPException(404, "Food item not found")
     for key, value in updates.model_dump(exclude_none=True).items():
         setattr(item, key, value)
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+
+@router.post("/manual")
+def create_manual_entry(
+    body: ManualEntryRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    item = FoodItem(
+        name=body.name,
+        serving_size="1 serving",
+        calories=body.calories,
+        protein_g=body.protein_g,
+        carbs_g=body.carbs_g,
+        fat_g=body.fat_g,
+        source="manual",
+        created_by=current_user.id,
+    )
     session.add(item)
     session.commit()
     session.refresh(item)

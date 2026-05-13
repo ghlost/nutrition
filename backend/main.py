@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.security import HTTPBearer
 from database import create_db
-from routers import diary, foods, recipes, goals, weight, food_photo, auth, user_recipes
+from routers import diary, foods, recipes, goals, weight, food_photo, auth, user_recipes, usda
 
 app = FastAPI(title="Nutrition App", redirect_slashes=False)
 app.swagger_ui_init_oauth = {}
@@ -63,3 +63,4 @@ app.include_router(goals.router, prefix="/api/goals", tags=["goals"])
 app.include_router(weight.router, prefix="/api/weight", tags=["weight"])
 app.include_router(food_photo.router, prefix="/api/food-photo", tags=["food-photo"])
 app.include_router(user_recipes.router, prefix="/api/my-recipes", tags=["my-recipes"])
+app.include_router(usda.router, prefix="/api/usda", tags=["usda"])

@@ -11,7 +11,8 @@ def now() -> str:
 
 class FoodItem(SQLModel, table=True):
     id: str = Field(default_factory=new_id, primary_key=True)
-    created_by: str = Field(default="system")     # ← new
+    created_by: str = Field(default="system")
+    usda_fdc_id: Optional[int] = Field(default=None, index=True)
     name: str
     brand: Optional[str] = None
     serving_size: str

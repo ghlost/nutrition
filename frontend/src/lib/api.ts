@@ -250,6 +250,21 @@ export interface RecipeWithProfile extends Recipe {
   user_notes: string | null
 }
 
+export interface USDAFood {
+  fdcId: number
+  name: string
+  brand: string | null
+  serving_size: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  fiber_g: number | null
+  sugar_g: number | null
+  sodium_mg: number | null
+  source: 'usda'
+}
+
 
 // ── Foods ────────────────────────────────────────────────────────────────────
 
@@ -257,6 +272,12 @@ export const foodsApi = {
   list:   () => request<FoodItem[]>('/foods/'),
   get:    (id: string) => request<FoodItem>(`/foods/${id}`),
   search: (q: string) => request<FoodItem[]>(`/foods/search?q=${encodeURIComponent(q)}`),
+  manual: (entry: { name: string; calories: number; protein_g?: number; carbs_g?: number; fat_g?: number }) =>
+    request<FoodItem>('/foods/manual', {
+      method: 'POST',
+      body: JSON.stringify(entry),
+      headers: { 'Content-Type': 'application/json' }
+    }),
   update: (id: string, updates: Partial<FoodItem>) =>
     request<FoodItem>(`/foods/${id}`, {
       method: 'PUT',
@@ -293,6 +314,17 @@ export const foodPhotoApi = {
         carbs_g:   totals.carbs_g,
         fat_g:     totals.fat_g,
       }),
+      headers: { 'Content-Type': 'application/json' }
+    })
+}
+
+export const usdaApi = {
+  search: (q: string) =>
+    request<USDAFood[]>(`/usda/search?q=${encodeURIComponent(q)}`),
+  add: (fdcId: number) =>
+    request<FoodItem>('/usda/add', {
+      method: 'POST',
+      body: JSON.stringify({ fdc_id: fdcId }),
       headers: { 'Content-Type': 'application/json' }
     })
 }
@@ -341,7 +373,7 @@ export const myRecipesApi = {
 export const diaryApi = {
   getDay: (date: string) => request<DiarySummary>(`/diary/${date}`),
   addEntry: (entry: Omit<DiaryEntry, 'id' | 'created_at' | 'calories' | 'protein_g' | 'carbs_g' | 'fat_g'>) =>
-    request<DiaryEntry>('/diary', { method: 'POST', body: JSON.stringify(entry), headers: { 'Content-Type': 'application/json' } }),
+    request<DiaryEntry>('/diary/', { method: 'POST', body: JSON.stringify(entry), headers: { 'Content-Type': 'application/json' } }),
   deleteEntry: (id: string) => request<{ deleted: string }>(`/diary/${id}`, { method: 'DELETE' })
 }
 
