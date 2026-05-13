@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import type { FoodScanStep1, FoodEstimateResult, ScanQuestion } from '../lib/api'
-import { foodsApi, recipesApi, foodPhotoApi, diaryApi } from '../lib/api'
+import { foodsApi, recipesApi, foodPhotoApi, diaryApi, todayLocalDate } from '../lib/api'
 import { Pencil, Camera, Upload, Loader2, CheckCircle, ChevronRight } from 'lucide-react'
 import EditFoodModal from '../components/EditFoodModal'
 import EditRecipeModal from '../components/EditRecipeModal'
@@ -257,12 +257,12 @@ export default function ScanPage({ onScanned }: { onScanned: () => void }) {
         })
 
         await diaryApi.addEntry({
-          date:         new Date().toISOString().split('T')[0],
-          meal_slot:    mealSlot,
-          item_type:    'food',
+          date: todayLocalDate(),
+          meal_slot: mealSlot,
+          item_type: 'food',
           food_item_id: foodItem.id,
-          recipe_id:    null,
-          servings:     1,
+          recipe_id: null,
+          servings: 1,
         })
       }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { summaryApi, weightApi } from '../lib/api'
+import { summaryApi, todayLocalDate, weightApi } from '../lib/api'
 import type { WeekSummary, WeightEntry } from '../lib/api'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { Scale, ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
@@ -62,7 +62,7 @@ export default function ProgressPage() {
     setWeekStart(toDateString(d))
   }
 
-  const isCurrentWeek = weekStart === toDateString(toMonday(new Date()))
+  const isCurrentWeek = weekStart === toDateString(toMonday(new Date(todayLocalDate() + 'T12:00:00')))
 
   async function logWeight() {
     const w = parseFloat(weightInput)
@@ -72,7 +72,7 @@ export default function ProgressPage() {
       const entry = await weightApi.log({
         weight_lbs: w,
         note: noteInput.trim() || null,
-        date: toDateString(new Date())
+        date: todayLocalDate()
       })
       setWeights(prev => [entry, ...prev])
       setWeightInput('')

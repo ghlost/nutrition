@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { foodsApi, recipesApi, myRecipesApi, diaryApi, weightApi, usdaApi } from '../lib/api'
+import { foodsApi, recipesApi, myRecipesApi, diaryApi, weightApi, usdaApi, todayLocalDate } from '../lib/api'
 import type { DiarySummary, FoodItem, Recipe, DiaryEntry, RecipeWithProfile, WeightEntry, USDAFood } from '../lib/api'
 import { Scale, Plus, Trash2, ChevronLeft, ChevronRight, X, Search } from 'lucide-react'
 
@@ -446,7 +446,7 @@ function AddFoodModal({ slot, onAdd, onClose }: {
   }
 
 export default function DiaryPage() {
-  const [date, setDate] = useState(toDateString(new Date()))
+  const [date, setDate] = useState(todayLocalDate())
   const [summary, setSummary] = useState<DiarySummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [modalSlot, setModalSlot] = useState<MealSlot | null>(null)
@@ -547,7 +547,7 @@ export default function DiaryPage() {
     setWeights(prev => prev.filter(w => w.id !== id))
   }
 
-  const isToday = date === toDateString(new Date())
+  const isToday = date === todayLocalDate()
 
   if (loading) return (
     <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
@@ -575,7 +575,7 @@ export default function DiaryPage() {
         </div>
         <button
           onClick={() => shiftDate(1)}
-          disabled={isToday}
+          disabled={date === todayLocalDate()}
           className="p-2 rounded-xl hover:bg-gray-100 disabled:opacity-30"
         >
           <ChevronRight size={20} className="text-gray-500" />

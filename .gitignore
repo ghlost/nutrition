@@ -5,6 +5,7 @@ chroma_db/
 __pycache__/
 *.pyc
 nutrition.db
+backend/nutrition.db
 node_modules/
 dist/
 .DS_Store
