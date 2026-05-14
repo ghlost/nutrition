@@ -88,7 +88,7 @@ export default function LoginPage({ onAuth }: { onAuth: () => void }) {
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && submit()}
-                  placeholder="jmoore"
+                  placeholder="username"
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-400 transition-colors"
                 />
               </div>
